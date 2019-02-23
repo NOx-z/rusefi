@@ -264,6 +264,8 @@ static percent_t automaticIdleController() {
 	return newValue;
 }
 
+int idleThreadStackUsage = 0;
+
 class IdleController : public PeriodicController<UTILITY_THREAD_STACK_SIZE> {
 public:
 	IdleController() : PeriodicController("IdleValve") { }
@@ -308,6 +310,8 @@ private:
 		finishIdleTestIfNeeded();
 		undoIdleBlipIfNeeded();
 
+		idleThreadStackUsage = getRemainingStack(chThdGetSelfX());
+
 		float clt = engine->sensors.clt;
 		bool isRunning = engine->rpmCalculator.isRunning(PASS_ENGINE_PARAMETER_SIGNATURE);
 		// cltCorrection is used only for cranking or running in manual mode
@@ -317,8 +321,9 @@ private:
 		// Use separate CLT correction table for cranking
 		else if (engineConfiguration->overrideCrankingIacSetting && !isRunning)
 			cltCorrection = interpolate2d("cltCrankingT", clt, config->cltCrankingCorrBins, config->cltCrankingCorr, CLT_CRANKING_CURVE_SIZE) / PERCENT_MULT;
-		else
+		else {
 			cltCorrection = interpolate2d("cltT", clt, config->cltIdleCorrBins, config->cltIdleCorr, CLT_CURVE_SIZE) / PERCENT_MULT;
+		}
 
 		percent_t iacPosition;
 

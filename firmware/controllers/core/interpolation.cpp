@@ -21,6 +21,8 @@ int needInterpolationLogging(void) {
 	return needInterpolationLoggingValue;
 }
 
+extern int idleThreadStackUsage;
+
 #define BINARY_PERF true
 
 Logging * logger;
@@ -101,6 +103,7 @@ float FastInterpolation::getValue(float x) {
  * @note	For example, "interpolateMsg("", engineConfiguration.tpsMin, 0, engineConfiguration.tpsMax, 100, adc);"
  */
 float interpolateMsg(const char *msg, float x1, float y1, float x2, float y2, float x) {
+	idleThreadStackUsage = getRemainingStack(chThdGetSelfX());
 	// todo: double comparison using EPS
 	if (x1 == x2) {
 		/**
@@ -239,6 +242,7 @@ int findIndex(const float array[], int size, float value) {
  * @brief	One-dimensional table lookup with linear interpolation
  */
 float interpolate2d(const char *msg, float value, const float bin[], const float values[], int size) {
+	idleThreadStackUsage = getRemainingStack(chThdGetSelfX());
 	if (isnan(value)) {
 		firmwareError(CUSTOM_INTERPOLATE_NAN, "NaN in interpolate2d %s", msg);
 		return NAN;

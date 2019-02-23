@@ -9,7 +9,9 @@
 
 #include "ThreadController.h"
 #include "efitime.h"
+#include "efilib2.h"
 
+static volatile int globalMaxUsedStack = 0;
 
 /**
  * @brief Base class for a controller that needs to run periodically to perform work.
@@ -73,6 +75,7 @@ private:
             // get a loop at 333 hz.  We need to wait until 2ms after we START
             // doing work, so the loop runs at a predictable 500hz.
             chThdSleepUntilWindowed(before, before + m_period);
+            globalMaxUsedStack = maxI(globalMaxUsedStack, getMaxUsedStack((uint8_t *)this->m_threadstack, sizeof(this->m_threadstack)));
         }
     }
 
@@ -97,6 +100,7 @@ public:
     	float frequencyHz = 1000.0 / periodMs;
     	this->m_period = CH_CFG_ST_FREQUENCY / frequencyHz;
     }
+
 };
 
 // let's make sure period is not below specified threshold

@@ -21,7 +21,7 @@
 template <int TStackSize>
 class ThreadController : public ControllerBase
 {
-private:
+public:
     THD_WORKING_AREA(m_threadstack, TStackSize);
     const tprio_t m_prio;
 
