@@ -7,41 +7,65 @@
  * @author Andrey Belomutskiy, (c) 2012-2020
  */
 
-#include "engine.h"
+#include "pch.h"
+
+#include "stepper.h"
+
+float StepperMotorBase::getTargetPosition() const {
+	return m_targetPosition;
+}
+
+void StepperMotorBase::setTargetPosition(float targetPositionSteps) {
+	// When the IAC position value change is insignificant (lower than this threshold), leave the poor valve alone
+	// When we get a larger change, actually update the target stepper position
+	if (absF(m_targetPosition - targetPositionSteps) >= 1) {
+		m_targetPosition = targetPositionSteps;
+	}
+}
+
+void StepperMotorBase::initialize(StepperHw *hardware, int totalSteps) {
+	m_totalSteps = maxI(3, totalSteps);
+
+	m_hw = hardware;
+}
 
 // todo: EFI_STEPPER macro
 #if EFI_PROD_CODE || EFI_SIMULATOR
-#include "stepper.h"
-#include "pin_repository.h"
-#include "engine_controller.h"
-#include "adc_inputs.h"
-#include "sensor.h"
 
-EXTERN_ENGINE;
-
-static Logging *logger;
-
-static void saveStepperPos(int pos) {
+void StepperMotorBase::saveStepperPos(int pos) {
 	// use backup-power RTC registers to store the data
-#if EFI_PROD_CODE
-	backupRamSave(BACKUP_STEPPER_POS, pos + 1);
+#if EFI_PROD_CODE && EFI_BACKUP_SRAM
+	backupRamSave(backup_ram_e::StepperPosition, pos + 1);
 #endif
+	postCurrentPosition();
 }
 
-static int loadStepperPos() {
-#if EFI_PROD_CODE
-	return (int)backupRamLoad(BACKUP_STEPPER_POS) - 1;
+int StepperMotorBase::loadStepperPos() {
+#if EFI_PROD_CODE && EFI_BACKUP_SRAM
+	return (int)backupRamLoad(backup_ram_e::StepperPosition) - 1;
 #else
 	return 0;
 #endif
 }
 
-void StepperMotor::ThreadTask() {
-	// Require hardware to be set
-	if (!m_hw) {
-		return;
+void StepperMotorBase::changeCurrentPosition(bool positive) {
+	if (positive) {
+		m_currentPosition++;
+	} else {
+		m_currentPosition--;
 	}
+	postCurrentPosition();
+}
 
+void StepperMotorBase::postCurrentPosition() {
+	if (engineConfiguration->debugMode == DBG_STEPPER_IDLE_CONTROL) {
+#if EFI_TUNER_STUDIO
+		engine->outputChannels.debugIntField5 = m_currentPosition;
+#endif /* EFI_TUNER_STUDIO */
+	}
+}
+
+void StepperMotorBase::setInitialPosition() {
 	// try to get saved stepper position (-1 for no data)
 	m_currentPosition = loadStepperPos();
 
@@ -49,22 +73,24 @@ void StepperMotor::ThreadTask() {
 	// first wait until at least 1 slowADC sampling is complete
 	waitForSlowAdc();
 #endif
+
 #if EFI_SHAFT_POSITION_INPUT
-	bool isRunning = engine->rpmCalculator.isRunning(PASS_ENGINE_PARAMETER_SIGNATURE);
+	bool isRunning = engine->rpmCalculator.isRunning();
 #else
 	bool isRunning = false;
 #endif /* EFI_SHAFT_POSITION_INPUT */
 	// now check if stepper motor re-initialization is requested - if the throttle pedal is pressed at startup
-	auto tpsPos = Sensor::get(SensorType::DriverThrottleIntent).value_or(0);
+	auto tpsPos = Sensor::getOrZero(SensorType::DriverThrottleIntent);
 	bool forceStepperParking = !isRunning && tpsPos > STEPPER_PARKING_TPS;
-	if (CONFIG(stepperForceParkingEveryRestart))
+	if (engineConfiguration->stepperForceParkingEveryRestart)
 		forceStepperParking = true;
-	scheduleMsg(logger, "Stepper: savedStepperPos=%d forceStepperParking=%d (tps=%.2f)", m_currentPosition, (forceStepperParking ? 1 : 0), tpsPos);
+	efiPrintf("Stepper: savedStepperPos=%d forceStepperParking=%d (tps=%.2f)", m_currentPosition, (forceStepperParking ? 1 : 0), tpsPos);
 
 	if (m_currentPosition < 0 || forceStepperParking) {
+		efiPrintf("Stepper: starting parking time=%lums", getTimeNowMs());
 		// reset saved value
 		saveStepperPos(-1);
-		
+
 		/**
 		 * let's park the motor in a known position to begin with
 		 *
@@ -73,53 +99,66 @@ void StepperMotor::ThreadTask() {
 		 *
 		 * Add extra steps to compensate step skipping by some old motors.
 		 */
-		int numParkingSteps = (int)efiRound((1.0f + (float)CONFIG(stepperParkingExtraSteps) / PERCENT_MULT) * m_totalSteps, 1.0f);
+		int numParkingSteps = (int)efiRound((1.0f + (float)engineConfiguration->stepperParkingExtraSteps / PERCENT_MULT) * m_totalSteps, 1.0f);
 		for (int i = 0; i < numParkingSteps; i++) {
-			m_hw->step(false);
+			if (!m_hw->step(false)) {
+				initialPositionSet = false;
+				return;
+			}
+			changeCurrentPosition(false);
 		}
 
 		// set & save zero stepper position after the parking completion
 		m_currentPosition = 0;
 		saveStepperPos(m_currentPosition);
+		// todo: is this a slow operation on the start-up path?
+		efiPrintf("Stepper: parking finished time=%lums", getTimeNowMs());
 	} else {
 		// The initial target position should correspond to the saved stepper position.
 		// Idle thread starts later and sets a new target position.
 		setTargetPosition(m_currentPosition);
 	}
 
-	while (true) {
-		int targetPosition = getTargetPosition();
-		int currentPosition = m_currentPosition;
+	initialPositionSet = true;
+}
 
-		if (targetPosition == currentPosition) {
-			m_hw->pause();
-			continue;
-		}
-		bool isIncrementing = targetPosition > currentPosition;
+void StepperMotorBase::doIteration() {
+	int targetPosition = efiRound(getTargetPosition(), 1);
+	int currentPosition = m_currentPosition;
 
-		if (isIncrementing) {
-			m_currentPosition++;
-		} else {
-			m_currentPosition--;
-		}
-
-		m_hw->step(isIncrementing);
-
-		// save position to backup RTC register
-#if EFI_PROD_CODE
-		saveStepperPos(m_currentPosition);
-#endif
+	// the stepper does not work if the main relay is turned off (it requires +12V)
+	if (!engine->isMainRelayEnabled()) {
+		m_hw->pause();
+		return;
 	}
+
+	if (!initialPositionSet) {
+		setInitialPosition();
+		return;
+	}
+
+	if (targetPosition == currentPosition) {
+		m_hw->sleep();
+		m_isBusy = false;
+		return;
+	}
+
+	m_isBusy = true;
+
+	bool isIncrementing = targetPosition > currentPosition;
+
+	if (m_hw->step(isIncrementing)) {
+		changeCurrentPosition(isIncrementing);
+	}
+
+	// save position to backup RTC register
+#if EFI_PROD_CODE
+	saveStepperPos(m_currentPosition);
+#endif
 }
 
-StepperMotor::StepperMotor() : ThreadController("stepper", NORMALPRIO) {}
-
-int StepperMotor::getTargetPosition() const {
-	return m_targetPosition;
-}
-
-void StepperMotor::setTargetPosition(int targetPosition) {
-	m_targetPosition = targetPosition;
+bool StepperMotorBase::isBusy() const {
+	return m_isBusy;
 }
 
 void StepDirectionStepper::setDirection(bool isIncrementing) {
@@ -132,7 +171,11 @@ void StepDirectionStepper::setDirection(bool isIncrementing) {
 	directionPin.setValue(isIncrementing);
 }
 
-void StepDirectionStepper::pulse() {
+bool StepDirectionStepper::pulse() {
+	// we move the motor only of it is powered from the main relay
+	if (!engine->isMainRelayEnabled())
+		return false;
+
 	enablePin.setValue(false); // enable stepper
 
 	stepPin.setValue(true);
@@ -142,52 +185,59 @@ void StepDirectionStepper::pulse() {
 	pause();
 
 	enablePin.setValue(true); // disable stepper
+
+	return true;
 }
 
-void StepperHw::pause() const {
-	chThdSleepMilliseconds(m_reactionTime);
+void StepperHw::sleep() {
+	pause();
+}
+
+void StepperHw::pause(int divisor) const {
+	// currently we can't sleep less than 1ms (see #3214)
+	chThdSleepMicroseconds(maxI(MS2US(1), (int)(MS2US(m_reactionTime)) / divisor));
 }
 
 void StepperHw::setReactionTime(float ms) {
 	m_reactionTime = maxF(1, ms);
 }
 
-void StepDirectionStepper::step(bool positive) {
+bool StepDirectionStepper::step(bool positive) {
 	setDirection(positive);
-	pulse();
+	return pulse();
 }
 
-void StepperMotor::initialize(StepperHw *hardware, int totalSteps, Logging *sharedLogger) {
-	m_totalSteps = maxI(3, totalSteps);
+void StepperMotor::initialize(StepperHw *hardware, int totalSteps) {
+	StepperMotorBase::initialize(hardware, totalSteps);
 
-	m_hw = hardware;
-
-	logger = sharedLogger;
-
-	Start();
+	start();
 }
 
-void StepDirectionStepper::initialize(brain_pin_e stepPin, brain_pin_e directionPin, pin_output_mode_e directionPinMode, float reactionTime, brain_pin_e enablePin, pin_output_mode_e enablePinMode) {
-	if (stepPin == GPIO_UNASSIGNED || directionPin == GPIO_UNASSIGNED) {
+void StepDirectionStepper::initialize(brain_pin_e p_stepPin, brain_pin_e p_directionPin, pin_output_mode_e p_directionPinMode, float reactionTime, brain_pin_e p_enablePin, pin_output_mode_e p_enablePinMode) {
+	if (!isBrainPinValid(p_stepPin) || !isBrainPinValid(p_directionPin)) {
 		return;
 	}
 
 	setReactionTime(reactionTime);
 
-	this->directionPinMode = directionPinMode;
-	this->directionPin.initPin("Stepper DIR", directionPin, &this->directionPinMode);
+	directionPinMode = p_directionPinMode;
+	directionPin.initPin("Stepper DIR", p_directionPin, directionPinMode);
 
-	this->stepPinMode = OM_DEFAULT;	// todo: do we need configurable stepPinMode?
-	this->stepPin.initPin("Stepper step", stepPin, &this->stepPinMode);
+	stepPinMode = OM_DEFAULT;	// todo: do we need configurable stepPinMode?
+	stepPin.initPin("Stepper step", p_stepPin, stepPinMode);
 
-	this->enablePinMode = enablePinMode;
-	this->enablePin.initPin("Stepper EN", enablePin, &this->enablePinMode);
+	enablePinMode = p_enablePinMode;
+	enablePin.initPin("Stepper EN", p_enablePin, enablePinMode);
 
 	// All pins must be 0 for correct hardware startup (e.g. stepper auto-disabling circuit etc.).
-	this->enablePin.setValue(true); // disable stepper
-	this->stepPin.setValue(false);
-	this->directionPin.setValue(false);
+	enablePin.setValue(true); // disable stepper
+	stepPin.setValue(false);
+	directionPin.setValue(false);
 	m_currentDirection = false;
 }
 
 #endif
+
+#if EFI_UNIT_TEST
+void StepperHw::sleep() { }
+#endif // EFI_UNIT_TEST

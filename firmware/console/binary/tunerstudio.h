@@ -9,9 +9,6 @@
 #include "global.h"
 #include "tunerstudio_io.h"
 
-#if EFI_TUNER_STUDIO
-#include "tunerstudio_configuration.h"
-
 typedef struct {
 	int queryCommandCounter;
 	int outputChannelsCommandCounter;
@@ -21,86 +18,63 @@ typedef struct {
 	int writeValueCommandCounter;
 	int crc32CheckCommandCounter;
 	int writeChunkCommandCounter;
-	int errorCounter;
 	int totalCounter;
 	int textCommandCounter;
 	int testCommandCounter;
+
+	// overall counter, not all of this errors are reported back to TS
+	int errorCounter;
+	// by type error counters reported to TS
+	int errorUnderrunCounter;
+	int errorOverrunCounter;
+	int errorCrcCounter;
+	int errorUnrecognizedCommand;
+	int errorOutOfRange;
+	int errorOther;
 } tunerstudio_counters_s;
 
 extern tunerstudio_counters_s tsState;
 
-/**
- * handle non CRC wrapped command
- */
-bool handlePlainCommand(ts_channel_s *tsChannel, uint8_t command);
-int tunerStudioHandleCrcCommand(ts_channel_s *tsChannel, char *data, int incomingPacketSize);
+void tunerStudioDebug(TsChannelBase* tsChannel, const char *msg);
+void tunerStudioError(TsChannelBase* tsChannel, const char *msg);
+#define DO_NOT_LOG nullptr
+void sendErrorCode(TsChannelBase *tsChannel, uint8_t code, /*empty line by default, use nullptr not to log*/const char *msg="");
 
-/**
- * rusEfi own test command
- */
-void handleTestCommand(ts_channel_s *tsChannel);
-/**
- * this command is part of protocol initialization
- */
-void handleQueryCommand(ts_channel_s *tsChannel, ts_response_format_e mode);
-/**
- * Gauges refresh
- */
-void handleOutputChannelsCommand(ts_channel_s *tsChannel, ts_response_format_e mode);
+uint8_t* getWorkingPageAddr();
 
-char *getWorkingPageAddr();
-void handleWriteValueCommand(ts_channel_s *tsChannel, ts_response_format_e mode, uint16_t page, uint16_t offset, uint8_t value);
-void handleWriteChunkCommand(ts_channel_s *tsChannel, ts_response_format_e mode, short offset, short count, void *content);
-void handlePageSelectCommand(ts_channel_s *tsChannel, ts_response_format_e mode, uint16_t pageId);
-void handlePageReadCommand(ts_channel_s *tsChannel, ts_response_format_e mode, uint16_t pageId, uint16_t offset, uint16_t count);
-void handleBurnCommand(ts_channel_s *tsChannel, ts_response_format_e mode, uint16_t page);
+void requestBurn();
+// Lua script might want to know how long since last TS request to see if unit is being actively monitored
+int getSecondsSinceChannelsRequest();
 
-void tunerStudioDebug(const char *msg);
-void tunerStudioError(const char *msg);
+#if EFI_TUNER_STUDIO
+#include "thread_controller.h"
+#include "thread_priority.h"
 
-void updateTunerStudioState(TunerStudioOutputChannels *tsOutputChannels DECLARE_ENGINE_PARAMETER_SUFFIX);
-void printTsStats(void);
-void requestBurn(void);
+void updateTunerStudioState();
 
 void startTunerStudioConnectivity(void);
-void syncTunerStudioCopy(void);
-void runBinaryProtocolLoop(ts_channel_s *tsChannel);
 
-#if defined __GNUC__
-// GCC
-#define pre_packed
-#define post_packed __attribute__((packed))
-#else
-// IAR
-#define pre_packed __packed
-#define post_packed
+typedef struct {
+	short int offset;
+	short int count;
+} TunerStudioWriteChunkRequest;
+
+#if EFI_PROD_CODE || EFI_SIMULATOR
+#define CONNECTIVITY_THREAD_STACK (3 * UTILITY_THREAD_STACK_SIZE)
+
+class TunerstudioThread : public ThreadController<CONNECTIVITY_THREAD_STACK> {
+public:
+	TunerstudioThread(const char* name)
+		: ThreadController(name, PRIO_CONSOLE)
+	{
+	}
+
+	// Initialize and return the channel to use for this thread.
+	virtual TsChannelBase* setupChannel() = 0;
+
+	void ThreadTask() override;
+
+};
 #endif
-
-typedef pre_packed struct
-	post_packed {
-		short int offset;
-		short int count;
-	} TunerStudioOchRequest;
-
-
-	typedef pre_packed struct
-	post_packed {
-		short int page;
-		short int offset;
-		short int count;
-	} TunerStudioWriteChunkRequest;
-
-	typedef pre_packed struct
-		post_packed {
-			short int page;
-			short int offset;
-			short int count;
-		} TunerStudioReadRequest;
-
-		typedef pre_packed struct
-			post_packed {
-				short int offset;
-				unsigned char value;
-			} TunerStudioWriteValueRequest;
 
 #endif /* EFI_TUNER_STUDIO */

@@ -35,8 +35,11 @@ public:
 	/**
 	 * This invokes PeriodicTask() immediately and starts the cycle of invocations and sleeps
 	 */
-    virtual void Start() {
-    	runAndScheduleNext(this);
-    }
+	virtual void start() {
+#if !EFI_UNIT_TEST
+		chVTObjectInit(&timer);
+		runAndScheduleNext(this);
+#endif // EFI_UNIT_TEST
+	}
 };
 

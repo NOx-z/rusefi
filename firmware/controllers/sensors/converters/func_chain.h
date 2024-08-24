@@ -1,6 +1,6 @@
 /**
  * @author Matthew Kennedy, (c) 2019
- * 
+ *
  * This lets us compose multiple functions in to a single function. If we have
  * conversion functions F(x), G(x), and H(x), we can define a new function
  * FuncChain<F, G, H> that will compute H(G(F(X))).  F first, then G, then H.
@@ -22,12 +22,11 @@ class FuncChain<> {
 protected:
 	SensorResult convert(float input) const {
 		// Base case is the identity function
-		return {true, input};
+		return input;
 	}
 
-	void showInfo(Logging* logger, float testInputValue) const {
+	void showInfo(float testInputValue) const {
 		// base case does nothing
-		(void)logger;
 		(void)testInputValue;
 	}
 };
@@ -48,7 +47,7 @@ public:
 		if (currentStep.Valid) {
 			return TBase::convert(currentStep.Value);
 		} else {
-			return {false, 0};
+			return unexpected;
 		}
 	}
 
@@ -58,20 +57,31 @@ public:
 		return m_f;
 	}
 
+	template <class TGet>
+	std::enable_if_t<std::is_same_v<TGet, TFirst>, TGet *> getPtr() {
+		return &m_f;
+	}
+
 	// We don't have it - check level (n - 1)
 	template <class TGet>
 	std::enable_if_t<!std::is_same_v<TGet, TFirst>, TGet &> get() {
 		return TBase::template get<TGet>();
 	}
 
-	void showInfo(Logging* logger, float testInputValue) const {
+	// We don't have it - check level (n - 1)
+	template <class TGet>
+	std::enable_if_t<!std::is_same_v<TGet, TFirst>, TGet *> getPtr() {
+		return TBase::template getPtr<TGet>();
+	}
+
+	void showInfo(float testInputValue) const {
 		// Print info about this level
-		m_f.showInfo(logger, testInputValue);
+		m_f.showInfo(testInputValue);
 
 		// If valid, recurse down
 		auto res = m_f.convert(testInputValue);
 		if (res.Valid) {
-			TBase::showInfo(logger, res.Value);
+			TBase::showInfo(res.Value);
 		}
 	}
 
@@ -94,8 +104,14 @@ public:
 		return m_fs.template get<TGet>();
 	}
 
-	void showInfo(Logging* logger, float testInputValue) const override {
-		m_fs.showInfo(logger, testInputValue);
+  // references would be sometimes implicitly deleted, right? adding parallel pointer API which would stay?
+	template <typename TGet>
+	TGet *getPtr() {
+		return m_fs.template getPtr<TGet>();
+	}
+
+	void showInfo(float testInputValue) const override {
+		m_fs.showInfo(testInputValue);
 	}
 
 private:

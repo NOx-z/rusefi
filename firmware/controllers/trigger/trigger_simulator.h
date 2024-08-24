@@ -8,22 +8,33 @@
 
 #pragma once
 
+#define SIMULATION_CYCLE_PERIOD 720000
+
 #include "trigger_decoder.h"
+
+int getSimulatedEventTime(const TriggerWaveform& shape, int i);
 
 class TriggerStimulatorHelper {
 public:
 
-	uint32_t findTriggerSyncPoint(TriggerWaveform * shape,
-			TriggerState *state DECLARE_CONFIG_PARAMETER_SUFFIX);
+	static expected<uint32_t> findTriggerSyncPoint(
+			TriggerWaveform& shape,
+			const TriggerConfiguration& triggerConfiguration,
+			TriggerDecoderBase& state);
 
-	void assertSyncPositionAndSetDutyCycle(const TriggerStateCallback triggerCycleCallback,
-			const uint32_t index, TriggerState *state, TriggerWaveform * shape
-			DECLARE_CONFIG_PARAMETER_SUFFIX);
-
+	static void assertSyncPosition(
+			const TriggerConfiguration& triggerConfiguration,
+			const uint32_t index,
+			TriggerDecoderBase& state,
+			TriggerWaveform& shape
+			);
 private:
 	// send next event so that we can see how state reacts
-	void feedSimulatedEvent(const TriggerStateCallback triggerCycleCallback, TriggerState *state,
-			TriggerWaveform * shape, int i DECLARE_CONFIG_PARAMETER_SUFFIX);
+	static void feedSimulatedEvent(
+			const TriggerConfiguration& triggerConfiguration,
+			TriggerDecoderBase& state,
+			const TriggerWaveform& shape,
+			int i);
 };
 
-bool isUsefulSignal(trigger_event_e signal DECLARE_CONFIG_PARAMETER_SUFFIX);
+bool isUsefulSignal(trigger_event_e signal, const TriggerWaveform& shape);

@@ -9,4 +9,7 @@
 
 #include "engine_configuration.h"
 
-void setFordInline6(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+// technical debt? weird number but unit tests currently depend on it
+#define FORD_INLINE_DWELL 0.5
+
+void setFordInline6();

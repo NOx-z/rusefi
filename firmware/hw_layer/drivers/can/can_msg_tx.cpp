@@ -2,45 +2,90 @@
  * @file	can_msg_tx.cpp
  *
  * CAN message transmission
- * 
+ *
  * @date Mar 13, 2020
  * @author Matthew Kennedy, (c) 2012-2020
  */
 
-#include "efifeatures.h"
-#include "global.h"
+#include "pch.h"
+
+#include "can_msg_tx.h"
+#include "auto_generated_can_category.h"
+
+#include "can.h"
+
+#if EFI_SIMULATOR
+#include "fifo_buffer.h"
+fifo_buffer<CANTxFrame, 1024> txCanBuffer;
+#endif // EFI_SIMULATOR
 
 #if EFI_CAN_SUPPORT
-#include "can_msg_tx.h"
-#include "engine_configuration.h"
+/*static*/ CANDriver* CanTxMessage::s_devices[2] = {nullptr, nullptr};
 
-EXTERN_CONFIG
-extern LoggingWithStorage sharedLogger;
-
-/*static*/ CANDriver* CanTxMessage::s_device = nullptr;
-
-/*static*/ void CanTxMessage::setDevice(CANDriver* device) {
-	s_device = device;
+/*static*/ void CanTxMessage::setDevice(CANDriver* device1, CANDriver* device2) {
+	s_devices[0] = device1;
+	s_devices[1] = device2;
 }
+#endif // EFI_CAN_SUPPORT
 
-CanTxMessage::CanTxMessage(uint32_t eid, uint8_t dlc) {
-	m_frame.IDE = CAN_IDE_STD;
-	m_frame.EID = eid;
+CanTxMessage::CanTxMessage(CanCategory p_category, uint32_t eid, uint8_t dlc, size_t bus, bool isExtended) {
+    category = p_category;
+#if HAS_CAN_FRAME
+#ifndef STM32H7XX
+	// ST bxCAN device
+	m_frame.IDE = isExtended ? CAN_IDE_EXT : CAN_IDE_STD;
 	m_frame.RTR = CAN_RTR_DATA;
-	m_frame.DLC = dlc;
+#else /* if STM32H7XX */
+	// Bosch M_CAN FDCAN device
+	m_frame.common.XTD = isExtended;
+	m_frame.common.RTR = 0;
+#endif
+
+	if (isExtended) {
+		CAN_EID(m_frame) = eid;
+	} else {
+	    if (eid >= 0x800) {
+	        criticalError("Looks like extended CAN ID %x %s", eid, getCanCategory(category));
+	        return;
+	    }
+		CAN_SID(m_frame) = eid;
+	}
+
+	setDlc(dlc);
+
+	setBus(bus);
+
 	memset(m_frame.data8, 0, sizeof(m_frame.data8));
+#endif // HAS_CAN_FRAME
 }
 
 CanTxMessage::~CanTxMessage() {
-	auto device = s_device;
+#if EFI_SIMULATOR
+	txCanBuffer.put(m_frame);
+#endif // EFI_SIMULATOR
+
+#if EFI_CAN_SUPPORT
+	auto device = s_devices[busIndex];
 
 	if (!device) {
-		warning(CUSTOM_ERR_CAN_CONFIGURATION, "CAN configuration issue");
+		warning(ObdCode::CUSTOM_ERR_CAN_CONFIGURATION, "Send: CAN configuration issue %d", busIndex);
 		return;
 	}
 
-	if (CONFIG(debugMode) == DBG_CAN) {
-		scheduleMsg(&sharedLogger, "Sending CAN message: SID %x/%x %x %x %x %x %x %x %x %x", m_frame.SID, m_frame.DLC,
+	if (!engine->allowCanTx) {
+		return;
+	}
+
+	if (engineConfiguration->verboseCan) {
+		efiPrintf("%s Sending CAN bus%d message: ID=%x/l=%x %x %x %x %x %x %x %x %x",
+		        getCanCategory(category),
+				busIndex,
+#ifndef STM32H7XX
+				(unsigned int)((m_frame.IDE == CAN_IDE_EXT) ? CAN_EID(m_frame) : CAN_SID(m_frame)),
+#else
+				(unsigned int)(m_frame.common.XTD ? CAN_EID(m_frame) : CAN_SID(m_frame)),
+#endif
+				m_frame.DLC,
 				m_frame.data8[0], m_frame.data8[1],
 				m_frame.data8[2], m_frame.data8[3],
 				m_frame.data8[4], m_frame.data8[5],
@@ -48,20 +93,44 @@ CanTxMessage::~CanTxMessage() {
 	}
 
 	// 100 ms timeout
-	canTransmit(device, CAN_ANY_MAILBOX, &m_frame, TIME_MS2I(100));
+	msg_t msg = canTransmit(device, CAN_ANY_MAILBOX, &m_frame, TIME_MS2I(100));
+#if EFI_TUNER_STUDIO
+	if (msg == MSG_OK) {
+		engine->outputChannels.canWriteOk++;
+	} else {
+		engine->outputChannels.canWriteNotOk++;
+	}
+#endif // EFI_TUNER_STUDIO
+#endif /* EFI_CAN_SUPPORT */
 }
 
-uint8_t& CanTxMessage::operator[](size_t index) {
-	return m_frame.data8[index];
+#if HAS_CAN_FRAME
+void CanTxMessage::setDlc(uint8_t dlc) {
+	m_frame.DLC = dlc;
 }
 
+void CanTxMessage::setBus(size_t bus) {
+	busIndex = bus;
+}
+
+// LSB Little-endian System, "Intel"
 void CanTxMessage::setShortValue(uint16_t value, size_t offset) {
 	m_frame.data8[offset] = value & 0xFF;
 	m_frame.data8[offset + 1] = value >> 8;
+}
+
+// MOTOROLA order, MSB (Most Significant Byte/Big Endian) comes first.
+void CanTxMessage::setShortValueMsb(uint16_t value, size_t offset) {
+	m_frame.data8[offset] = value >> 8;
+	m_frame.data8[offset + 1] = value & 0xFF;
 }
 
 void CanTxMessage::setBit(size_t byteIdx, size_t bitIdx) {
 	m_frame.data8[byteIdx] |= 1 << bitIdx;
 }
 
-#endif // EFI_CAN_SUPPORT
+uint8_t& CanTxMessage::operator[](size_t index) {
+	return m_frame.data8[index];
+}
+#endif // HAS_CAN_FRAME
+

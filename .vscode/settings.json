@@ -14,19 +14,26 @@
 		"xtree": "cpp"
 	},
 	"editor.detectIndentation": false,
+	"editor.indentSize": 4,
+	"editor.tabSize": 4,
 	"editor.insertSpaces": false,
 	"files.exclude": {
 		"**/.dep": true,
 		"**/build/lst": true,
 		"**/build/obj": true,
 		"hardware/": true,
-		"misc/": true,
 	},
 	"search.exclude": {
 		"**/.dep": true,
 		"**/build/lst": true,
 		"**/build/obj": true,
 		"hardware/": true,
-		"misc/": true,
+		"firmware/ChibiOS/demos": true,
+	},
+	"cSpell.words": [
+		"IACV"
+	],
+	"files.associations": {
+		"*.input": "ini"
 	},
 }

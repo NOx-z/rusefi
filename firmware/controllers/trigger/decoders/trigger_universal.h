@@ -12,16 +12,29 @@
 #define NO_LEFT_FILTER -1
 #define NO_RIGHT_FILTER 1000
 
-void addSkippedToothTriggerEvents(trigger_wheel_e wheel, TriggerWaveform *s,
+void addSkippedToothTriggerEvents(TriggerWheel wheel, TriggerWaveform *s,
 		int totalTeethCount, int skippedCount,
 		float toothWidth,
 		float offset, float engineCycle, float filterLeft, float filterRight);
 
 
-void initializeSkippedToothTriggerWaveformExt(TriggerWaveform *s, int totalTeethCount, int skippedCount, operation_mode_e operationMode);;
+void initializeSkippedToothTrigger(TriggerWaveform *s, int totalTeethCount, int skippedCount, operation_mode_e operationMode, SyncEdge syncEdge);
 
-void configureOnePlus60_2(TriggerWaveform *s, operation_mode_e operationMode);
+// TT_3_1_CAM
+void configure3_1_cam(TriggerWaveform *s);
 
-void configure3_1_cam(TriggerWaveform *s, operation_mode_e operationMode);
+void configureOnePlusOne(TriggerWaveform *s);
+// TT_VVT_BOSCH_QUICK_START
+void configureQuickStartSenderWheel(TriggerWaveform *s);
 
-void configureOnePlusOne(TriggerWaveform *s, operation_mode_e operationMode);
+// TT_KAWA_KX450F
+void configureKawaKX450F(TriggerWaveform *s);
+
+// TT_3_TOOTH_CRANK
+void configure3ToothCrank(TriggerWaveform*);
+
+// TT_6_TOOTH_CRANK
+void configure6ToothCrank(TriggerWaveform*);
+
+// TT_12_TOOTH_CRANK
+void configure12ToothCrank(TriggerWaveform*);

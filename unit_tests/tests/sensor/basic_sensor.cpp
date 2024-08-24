@@ -1,7 +1,6 @@
-#include "mock/mock_sensor.h"
-#include "stored_value_sensor.h"
+#include "pch.h"
 
-#include <gtest/gtest.h>
+#include "stored_value_sensor.h"
 
 class SensorBasic : public ::testing::Test {
 protected:
@@ -49,7 +48,7 @@ TEST_F(SensorBasic, DoubleRegister) {
 
 	// And then do it again!
 	MockSensor dut2(SensorType::Tps1);
-	EXPECT_FALSE(dut2.Register());
+	EXPECT_FATAL_ERROR(dut2.Register());
 
 	// Make sure that we get the first DUT back - not the second
 	auto shouldBeDut = Sensor::getSensorOfType(SensorType::Tps1);
@@ -61,6 +60,20 @@ TEST_F(SensorBasic, SensorNotInitialized) {
 	auto result = Sensor::get(SensorType::Clt);
 
 	EXPECT_FALSE(result.Valid);
+}
+
+TEST_F(SensorBasic, DoubleUnRegister) {
+	// Create a sensor, register it
+	MockSensor dut(SensorType::Tps1);
+	ASSERT_TRUE(dut.Register());
+	Sensor::setMockValue(SensorType::Tps1, 25);
+	ASSERT_TRUE(Sensor::get(SensorType::Tps1).Valid);
+
+	dut.unregister();
+	ASSERT_TRUE(Sensor::get(SensorType::Tps1).Valid);// huh? is that a bug?
+
+	dut.unregister();
+	ASSERT_TRUE(Sensor::get(SensorType::Tps1).Valid);// huh? is that a bug?
 }
 
 TEST_F(SensorBasic, SensorInitialized) {
@@ -91,11 +104,13 @@ TEST_F(SensorBasic, HasSensor) {
 
 	// Now we should!
 	ASSERT_TRUE(Sensor::hasSensor(SensorType::Clt));
+
+	// Check that we can have the sensor report that it's missing
+	dut.setHasSensor(false);
+	ASSERT_FALSE(Sensor::hasSensor(SensorType::Clt));
 }
 
 TEST_F(SensorBasic, HasSensorMock) {
-	MockSensor dut(SensorType::Clt);
-
 	// Check that we don't have the sensor
 	ASSERT_FALSE(Sensor::hasSensor(SensorType::Clt));
 
@@ -104,4 +119,10 @@ TEST_F(SensorBasic, HasSensorMock) {
 
 	// Now we should!
 	ASSERT_TRUE(Sensor::hasSensor(SensorType::Clt));
+}
+
+
+TEST_F(SensorBasic, FindByName) {
+	ASSERT_EQ(SensorType::Clt, findSensorTypeByName("Clt"));
+	ASSERT_EQ(SensorType::Clt, findSensorTypeByName("cLT"));
 }

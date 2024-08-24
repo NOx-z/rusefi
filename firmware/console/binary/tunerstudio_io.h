@@ -1,5 +1,6 @@
 /**
  * @file	tunerstudio_io.h
+ * @file TS protocol commands and methods are here
  *
  * @date Mar 8, 2015
  * @author Andrey Belomutskiy, (c) 2012-2020
@@ -7,93 +8,124 @@
 
 #pragma once
 #include "global.h"
+#include "tunerstudio_impl.h"
+
+#if EFI_USB_SERIAL
+#include "usbconsole.h"
+#endif // EFI_USB_SERIAL
 
 #if EFI_PROD_CODE
-#include "usbconsole.h"
 #include "pin_repository.h"
 #endif
 
-#define PROTOCOL  "001"
+#ifndef USART_CR2_STOP1_BITS
+// todo: acticulate why exactly does prometheus_469 as for this hack
+#define USART_CR2_STOP1_BITS 0
+#endif
 
-#define TS_RESPONSE_OK 0x00
-#define TS_RESPONSE_BURN_OK 0x04
-#define TS_RESPONSE_COMMAND_OK 0x07
+#define TS_PACKET_HEADER_SIZE	3
+#define TS_PACKET_TAIL_SIZE		4
 
-#define TS_RESPONSE_UNDERRUN 0x80
-#define TS_RESPONSE_CRC_FAILURE 0x82
+class TsChannelBase {
+public:
+	TsChannelBase(const char *name);
+	// Virtual functions - implement these for your underlying transport
+	virtual void write(const uint8_t* buffer, size_t size, bool isEndOfPacket = false) = 0;
+	virtual size_t readTimeout(uint8_t* buffer, size_t size, int timeout) = 0;
 
-typedef enum {
-	TS_PLAIN = 0,
-	TS_CRC = 1
-} ts_response_format_e;
+	// These functions are optional to implement, not all channels need them
+	virtual void flush() { }
+	virtual bool isConfigured() const { return true; }
+	virtual bool isReady() const { return true; }
+	virtual void stop() { }
 
-typedef struct {
-	BaseChannel * channel;
-	uint8_t writeBuffer[7];	// size(2 bytes) + response(1 byte) + crc32 (4 bytes)
+	// Base functions that use the above virtual implementation
+	size_t read(uint8_t* buffer, size_t size);
+
+	int bytesIn = 0;
+	int bytesOut = 0;
+
+#ifdef EFI_CAN_SERIAL
+	virtual	// CAN device needs this function to be virtual for small-packet optimization
+#endif
+	void writeCrcPacket(uint8_t responseCode, const uint8_t* buf, size_t size, bool allowLongPackets = false);
+	void sendResponse(ts_response_format_e mode, const uint8_t * buffer, int size, bool allowLongPackets = false);
+
 	/**
 	 * See 'blockingFactor' in rusefi.ini
 	 */
-	char crcReadBuffer[BLOCKING_FACTOR + 30];
-} ts_channel_s;
+	char scratchBuffer[BLOCKING_FACTOR + 30];
+	const char *name;
 
-// See uart_dma_s
-#define TS_FIFO_BUFFER_SIZE (BLOCKING_FACTOR + 30)
-// This must be a power of 2!
-#define TS_DMA_BUFFER_SIZE 32
+	void assertPacketSize(size_t size, bool allowLongPackets);
+	uint32_t writePacketHeader(const uint8_t responseCode, const size_t size);
+	void crcAndWriteBuffer(const uint8_t responseCode, const size_t size);
+	void copyAndWriteSmallCrcPacket(uint8_t responseCode, const uint8_t* buf, size_t size);
 
-// struct needed for async DMA transfer mode (see TS_UART_DMA_MODE)
-typedef struct {
-	// circular DMA buffer
-	uint8_t dmaBuffer[TS_DMA_BUFFER_SIZE];
-	// current read position for the DMA buffer
-	volatile int readPos;
-	// secondary FIFO buffer for async. transfer
-	uint8_t buffer[TS_FIFO_BUFFER_SIZE];
-	// input FIFO Rx queue
-	input_queue_t fifoRxQueue;
-} uart_dma_s;
+	// Write a response code with no data
+	void writeCrcResponse(uint8_t responseCode) {
+		writeCrcPacketLarge(responseCode, nullptr, 0);
+	}
 
-// These commands are used exclusively by the rusEfi console
-#define TS_TEST_COMMAND 't' // 0x74
-#define TS_GET_TEXT 'G' // 0x47
-#define TS_GET_FILE_RANGE '2' // 0x32
-#define TS_EXECUTE 'E' // 0x45
-#define TS_GET_STRUCT '9' // 0x39
+	/* When TsChannel is in "not in sync" state tsProcessOne will silently try to find
+	 * begining of packet.
+	 * As soon as tsProcessOne was able to receive valid packet with valid size and crc
+	 * TsChannel becomes "in sync". That means it will react on any futher errors: it will
+	 * emit packet with error code and switch back to "not in sync" mode.
+	 * This insures that RE will send only one error message after lost of synchronization
+	 * with TS.
+	 * Also while in "not in sync" state - tsProcessOne will not try to receive whole packet
+	 * by one read. Instead after getting packet size it will try to receive one byte of
+	 * command and check if it is supported. */
+	bool in_sync = false;
 
-// These commands are used by TunerStudio and the rusEfi console
-#define TS_HELLO_COMMAND 'S' // 0x53 queryCommand
-#define TS_OUTPUT_COMMAND 'O' // 0x4F ochGetCommand
-#define TS_READ_COMMAND 'R' // 0x52
-#define TS_PAGE_COMMAND 'P' // 0x50
-#define TS_COMMAND_F 'F' // 0x46
-#define TS_GET_FIRMWARE_VERSION 'V' // versionInfo
-#define TS_GET_CONFIG_ERROR 'e' // returns getFirmwareError()
+private:
+	bool isBigPacket(size_t size);
+	void writeCrcPacketLarge(uint8_t responseCode, const uint8_t* buf, size_t size);
+};
 
-// High speed logger commands
-#define TS_SET_LOGGER_MODE   'l'
-#define TS_GET_LOGGER_BUFFER 'L'
+// This class represents a channel for a physical async serial poart
+class SerialTsChannelBase : public TsChannelBase {
+public:
+	SerialTsChannelBase(const char *p_name) : TsChannelBase(p_name) {};
+	// Open the serial port with the specified baud rate
+	virtual void start(uint32_t baud) = 0;
+};
 
-// Performance tracing
-#define TS_PERF_TRACE_BEGIN 'r'
-#define TS_PERF_TRACE_GET_BUFFER 'b'
+#if HAL_USE_SERIAL
+// This class implements a ChibiOS Serial Driver
+class SerialTsChannel final : public SerialTsChannelBase {
+public:
+	SerialTsChannel(SerialDriver& driver) : SerialTsChannelBase("Serial"), m_driver(&driver) { }
 
-#define TS_SINGLE_WRITE_COMMAND 'W' // 0x57 pageValueWrite
-#define TS_CHUNK_WRITE_COMMAND 'C' // 0x43 pageChunkWrite
-#define TS_BURN_COMMAND 'B' // 0x42 burnCommand
-#define TS_IO_TEST_COMMAND 'w' // 0x77
+	void start(uint32_t baud) override;
+	void stop() override;
 
-#define TS_CRC_CHECK_COMMAND 'k' // 0x6B
+	void write(const uint8_t* buffer, size_t size, bool isEndOfPacket) override;
+	size_t readTimeout(uint8_t* buffer, size_t size, int timeout) override;
 
-#define CRC_VALUE_SIZE 4
-// todo: double-check this
-#define CRC_WRAPPING_SIZE (CRC_VALUE_SIZE + 3)
+private:
+	SerialDriver* const m_driver;
+};
+#endif // HAL_USE_SERIAL
 
-#if HAL_USE_SERIAL_USB
-#define CONSOLE_USB_DEVICE SDU1
-#endif /* HAL_USE_SERIAL_USB */
+#if HAL_USE_UART
+// This class implements a ChibiOS UART Driver
+class UartTsChannel : public SerialTsChannelBase {
+public:
+	UartTsChannel(UARTDriver& driver) : SerialTsChannelBase("UART"), m_driver(&driver) { }
 
-void startTsPort(ts_channel_s *tsChannel);
-bool stopTsPort(ts_channel_s *tsChannel);
+	void start(uint32_t baud) override;
+	void stop() override;
+
+	void write(const uint8_t* buffer, size_t size, bool isEndOfPacket) override;
+	size_t readTimeout(uint8_t* buffer, size_t size, int timeout) override;
+
+protected:
+	UARTDriver* const m_driver;
+	UARTConfig m_config;
+};
+#endif // HAL_USE_UART
 
 // that's 1 second
 #define BINARY_IO_TIMEOUT TIME_MS2I(1000)
@@ -101,10 +133,7 @@ bool stopTsPort(ts_channel_s *tsChannel);
 // that's 1 second
 #define SR5_READ_TIMEOUT TIME_MS2I(1000)
 
-void sr5WriteData(ts_channel_s *tsChannel, const uint8_t * buffer, int size);
-void sr5WriteCrcPacket(ts_channel_s *tsChannel, const uint8_t responseCode, const void *buf, const uint16_t size);
-void sr5SendResponse(ts_channel_s *tsChannel, ts_response_format_e mode, const uint8_t * buffer, int size);
-int sr5ReadData(ts_channel_s *tsChannel, uint8_t * buffer, int size);
-int sr5ReadDataTimeout(ts_channel_s *tsChannel, uint8_t * buffer, int size, int timeout);
-bool sr5IsReady(ts_channel_s *tsChannel);
+void startSerialChannels();
+SerialTsChannelBase* getBluetoothChannel();
 
+void startCanConsole();

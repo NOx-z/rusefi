@@ -7,27 +7,19 @@
  * @author Andrey Belomutskiy, (c) 2012-2020
  */
 
-#include "engine.h"
-#include "allsensors.h"
+#include "pch.h"
 
-EXTERN_ENGINE;
+ButtonDebounce acDebounce("ac_switch");
 
-void initSensors(Logging *sharedLogger DECLARE_ENGINE_PARAMETER_SUFFIX) {
-	initThermistors(sharedLogger PASS_ENGINE_PARAMETER_SUFFIX);
-	initMapDecoder(sharedLogger PASS_ENGINE_PARAMETER_SUFFIX);
+void initSensors() {
+	initMapDecoder();
+	acDebounce.init(15, engineConfiguration->acSwitch, engineConfiguration->acSwitchMode);
 }
 
-bool hasAcToggle(DECLARE_ENGINE_PARAMETER_SIGNATURE) {
-	return engineConfiguration->acSwitchAdc != EFI_ADC_NONE;
+bool getAcToggle() {
+	return acDebounce.readPinState();
 }
 
-// todo: move this somewhere else? maybe.
-bool getAcToggle(DECLARE_ENGINE_PARAMETER_SIGNATURE) {
-	/**
-	 * todo: make this flexible
-	 *
-	 * for now we are looking for a pull-up. High level means input switch is floating (which is OFF position)
-	 * low value means input is ground - which means ON.
-	 */
-	return getVoltageDivided("A/C", engineConfiguration->acSwitchAdc PASS_ENGINE_PARAMETER_SUFFIX) < 2.5;
+bool hasAcToggle() {
+	return isBrainPinValid(engineConfiguration->acSwitch);
 }

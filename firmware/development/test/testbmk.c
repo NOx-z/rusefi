@@ -14,7 +14,8 @@
     limitations under the License.
 */
 
-#include "global.h"
+#include <rusefi/true_false.h>
+#include "efifeatures.h"
 
 #if EFI_PERF_METRICS
 #include "test.h"

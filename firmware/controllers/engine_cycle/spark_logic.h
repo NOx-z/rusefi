@@ -7,23 +7,11 @@
 
 #pragma once
 
-#include "engine.h"
-
-int isInjectionEnabled(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-void onTriggerEventSparkLogic(bool limitedSpark, uint32_t trgEventIndex, int rpm, efitick_t edgeTimestamp DECLARE_ENGINE_PARAMETER_SUFFIX);
-void initSparkLogic(Logging *sharedLogger);
-void turnSparkPinHigh(IgnitionEvent *event);
+void onTriggerEventSparkLogic(int rpm, efitick_t edgeTimestamp, float currentPhase, float nextPhase);
+void turnSparkPinHighStartCharging(IgnitionEvent *event);
 void fireSparkAndPrepareNextSchedule(IgnitionEvent *event);
-int getNumberOfSparks(ignition_mode_e mode DECLARE_ENGINE_PARAMETER_SUFFIX);
-percent_t getCoilDutyCycle(int rpm DECLARE_ENGINE_PARAMETER_SUFFIX);
-void initializeIgnitionActions(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-
-int isIgnitionTimingError(void);
-
-#define TRIGGER_EVENT_UNDEFINED -1
-bool scheduleOrQueue(AngleBasedEvent *event,
-		uint32_t trgEventIndex,
-		efitick_t edgeTimestamp,
-		angle_t angle,
-		action_s action
-		DECLARE_ENGINE_PARAMETER_SUFFIX);
+int getNumberOfSparks(ignition_mode_e mode);
+// fact: getInjectorDutyCycle is used by limpManager as cut reason but coil duty cycle is only logged not considered for control strategy
+// see also maxAllowedDwellAngle which only produces a warning without cutting spark
+percent_t getCoilDutyCycle(int rpm);
+void initializeIgnitionActions();

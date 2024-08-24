@@ -1,22 +1,24 @@
-#include "func_chain.h"
+#include "pch.h"
 
-#include <gtest/gtest.h>
+#include "func_chain.h"
+#include "init.h"
+#include "lua_hooks.h"
 
 struct AddOne final : public SensorConverter {
     SensorResult convert(float input) const {
-        return {true, input + 1};
+        return input + 1;
     }
 };
 
 struct SubOne final : public SensorConverter {
     SensorResult convert(float input) const {
-        return {true, input - 1};
+        return input - 1;
     }
 };
 
 struct Doubler final : public SensorConverter {
     SensorResult convert(float input) const {
-        return {true, input * 2};
+        return input * 2;
     }
 };
 
@@ -81,4 +83,27 @@ TEST(FunctionChain, TestGet)
     fc.get<AddOne>();
     fc.get<Doubler>();
     fc.get<SubOne>();
+
+    ASSERT_TRUE(fc.getPtr<AddOne>() == &fc.get<AddOne>());
+    ASSERT_TRUE(fc.getPtr<Doubler>() == &fc.get<Doubler>());
+    ASSERT_TRUE(fc.getPtr<SubOne>() == &fc.get<SubOne>());
+}
+
+TEST(Sensor, OverrideValue) {
+	EngineTestHelper eth(engine_type_e::HARLEY);
+	// huh? i do not get this EXPECT_FALSE(Sensor::get(SensorType::Rpm).Valid);
+	initOverrideSensors();
+
+	Sensor::setMockValue(SensorType::Rpm, 1000);
+	EXPECT_TRUE(Sensor::get(SensorType::Rpm).Valid);
+	EXPECT_TRUE(Sensor::get(SensorType::DashOverrideRpm).Valid);
+
+	ASSERT_DOUBLE_EQ(1000, Sensor::get(SensorType::Rpm).Value);
+	ASSERT_DOUBLE_EQ(1000, Sensor::get(SensorType::DashOverrideRpm).Value);
+
+	LuaOverrideSensor * sensor = (LuaOverrideSensor*)Sensor::getSensorOfType(SensorType::DashOverrideRpm);
+	sensor->setOverrideValue(3);
+	ASSERT_DOUBLE_EQ(3, Sensor::get(SensorType::DashOverrideRpm).Value);
+	sensor->reset();
+	ASSERT_DOUBLE_EQ(1000, Sensor::get(SensorType::DashOverrideRpm).Value);
 }

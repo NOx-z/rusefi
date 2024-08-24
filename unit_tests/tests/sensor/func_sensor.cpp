@@ -1,14 +1,14 @@
-#include "functional_sensor.h"
-#include "global.h"
+#include "pch.h"
 
-#include <gtest/gtest.h>
+#include "functional_sensor.h"
 
 struct DoublerFunc final : public SensorConverter {
 	SensorResult convert(float input) const {
-		bool valid = input > 0;
-		float value = input * 2;
+		if (input <= 0) {
+			return unexpected;
+		}
 
-		return {valid, value};
+		return input * 2;
 	}
 };
 
@@ -39,7 +39,7 @@ TEST_F(SensorConverted, TestValid) {
 		EXPECT_FALSE(s.Valid);
 	}
 
-	dut.postRawValue(25, 0);
+	dut.postRawValue(25, getTimeNowNt());
 
 	// Should be valid, with a value of 25*2 = 50
 	{
@@ -64,6 +64,5 @@ TEST_F(SensorConverted, TestInvalid) {
 	{
 		auto s = Sensor::get(SensorType::Clt);
 		EXPECT_FALSE(s.Valid);
-		EXPECT_FLOAT_EQ(s.Value, 0);
 	}
 }

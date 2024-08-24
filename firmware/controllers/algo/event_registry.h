@@ -13,116 +13,90 @@
 #include "fl_stack.h"
 #include "trigger_structure.h"
 
-#define MAX_INJECTION_OUTPUT_COUNT INJECTION_PIN_COUNT
-#define MAX_WIRES_COUNT 2
-
-class Engine;
-
-class InjectionEvent {
-public:
-	InjectionEvent();
-	/**
-	 * This is a performance optimization for IM_SIMULTANEOUS fuel strategy.
-	 * It's more efficient to handle all injectors together if that's the case
-	 */
-	bool isSimultanious;
-	InjectorOutputPin *outputs[MAX_WIRES_COUNT];
-	int ownIndex;
-	DECLARE_ENGINE_PTR;
-	event_trigger_position_s injectionStart;
-
-	scheduling_s signalTimerUp;
-	scheduling_s endOfInjectionEvent;
-
-	/**
-	 * we need atomic flag so that we do not schedule a new pair of up/down before previous down was executed.
-	 *
-	 * That's because we want to be sure that no 'down' side callback would be ignored since we are counting to see
-	 * overlaps so we need the end counter to always have zero.
-	 * TODO: make watchdog decrement relevant counter
-	 */
-	bool isScheduled = false;
-};
-
-
-/**
- * This class knows about when to inject fuel
- */
-class FuelSchedule {
-public:
-	FuelSchedule();
-	/**
-	 * this method schedules all fuel events for an engine cycle
-	 */
-	void addFuelEvents(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-	bool addFuelEventsForCylinder(int cylinderIndex DECLARE_ENGINE_PARAMETER_SUFFIX);
-
-	/**
-	 * injection events, per cylinder
-	 */
-	InjectionEvent elements[MAX_INJECTION_OUTPUT_COUNT];
-	bool isReady;
-
-private:
-	void clear();
-};
-
-class AngleBasedEvent {
-public:
-	scheduling_s scheduling;
-	event_trigger_position_s position;
+struct AngleBasedEvent {
+	scheduling_s eventScheduling;
 	action_s action;
 	/**
 	 * Trigger-based scheduler maintains a linked list of all pending tooth-based events.
 	 */
 	AngleBasedEvent *nextToothEvent = nullptr;
+
+  // angular position of this event
+  angle_t getAngle() const {
+    return enginePhase;
+  }
+
+	void setAngle(angle_t p_enginePhase) {
+    	enginePhase = p_enginePhase;
+    }
+
+	bool shouldSchedule(float currentPhase, float nextPhase) const;
+	float getAngleFromNow(float currentPhase) const;
+private:
+	angle_t enginePhase;
 };
 
+// this is related to wasted spark idea where engines fire each spark twice per 4 stroke 720 degree cycle of operations
+// first spark is happens on intake stroke and actually ignites fuel mixture, that's the useful one
+// the other spark 360 degrees later happens during exhaust stroke meaning there is nothing to ignite, that spark is known as "wasted" spark
+// historically this was about sharing ignition coils between opposite cylinders and having two high voltage wire coming from one physical coil
+// more recently same idea happens with two individual physical coils (meaning two outputs) since wasted spark of operation is useful
+// while exact engine phase is either not known YET (cranking) or just not known (broken cam sensor)
+// so, while in wasted spark we manage half of cylinder count _events_ potentially with each event having two outputs
+//
+// an interesting corner case is when we transition from wasted spark mode into individual/sequential mode
 #define MAX_OUTPUTS_FOR_IGNITION 2
 
 class IgnitionEvent {
 public:
 	IgnitionEvent();
+	// IgnitionEvent to IgnitionOutputPin is either 1 to 1 or 1 to 2 relationship, see large comment at 'MAX_OUTPUTS_FOR_IGNITION'
 	IgnitionOutputPin *outputs[MAX_OUTPUTS_FOR_IGNITION];
 	scheduling_s dwellStartTimer;
 	AngleBasedEvent sparkEvent;
+
+	scheduling_s trailingSparkCharge;
+	scheduling_s trailingSparkFire;
 
 	// How many additional sparks should we fire after the first one?
 	// For single sparks, this should be zero.
 	uint8_t sparksRemaining = 0;
 
+	// Track whether coil charge was intentionally skipped (spark limiter)
+	bool wasSparkLimited = false;
+
 	/**
 	 * Desired timing advance
 	 */
 	angle_t sparkAngle = NAN;
-	floatms_t sparkDwell;
-	/**
-	 * this timestamp allows us to measure actual dwell time
-	 */
-	uint32_t actualStartOfDwellNt;
-	event_trigger_position_s dwellPosition;
+	floatms_t sparkDwell = 0;
+
+	// this timer allows us to measure actual dwell time
+	Timer actualDwellTimer;
+
+	float dwellAngle = 0;
+
 	/**
 	 * Sequential number of currently processed spark event
-	 * @see globalSparkIdCounter
+	 * @see engineState.globalSparkCounter
 	 */
-	int sparkId = 0;
+	int sparkCounter = 0;
 	/**
-	 * [0, specs.cylindersCount)
+	 * [0, cylindersCount)
 	 */
 	int cylinderIndex = 0;
+	// previously known as cylinderNumber
+	int8_t coilIndex = 0;
 	char *name = nullptr;
-	DECLARE_ENGINE_PTR;
 	IgnitionOutputPin *getOutputForLoggins();
 };
-
-#define MAX_IGNITION_EVENT_COUNT IGNITION_PIN_COUNT
 
 class IgnitionEventList {
 public:
 	/**
 	 * ignition events, per cylinder
 	 */
-	IgnitionEvent elements[MAX_IGNITION_EVENT_COUNT];
+	IgnitionEvent elements[MAX_CYLINDER_COUNT];
 	bool isReady = false;
 };
 
@@ -134,5 +108,7 @@ public:
 
 	AngleBasedEvent open;
 	AngleBasedEvent close;
-	DECLARE_ENGINE_PTR;
 };
+
+
+IgnitionEventList *getIgnitionEvents();

@@ -1,8 +1,12 @@
 /**
  * @file perf_trace.h
  *
+ * https://github.com/rusefi/rusefi/wiki/Developer-Performance-Tracing
+ *
  */
 #pragma once
+
+#include "big_buffer.h"
 
 #include <cstdint>
 #include <cstddef>
@@ -12,7 +16,7 @@
 // each element in PE more than once, as they should each indicate that a specific thing began,
 // ended, or occurred.
 enum class PE : uint8_t {
-	// The tag below is consumed by PerfTraceTool.java
+	// The tag below is consumed by PerfTraceTool.java which generates EnumNames.java
 	// enum_start_tag
 	INVALID,
 	ISR,
@@ -45,13 +49,13 @@ enum class PE : uint8_t {
 	GetSpeedDensityFuel,
 	WallFuelAdjust,
 	MapAveragingTriggerCallback,
-	AdcCallbackFastComplete,
+	Unused1,
 	SingleTimerExecutorScheduleByTimestamp,
 	GetTimeNowUs,
 	EventQueueExecuteCallback,
 	PwmGeneratorCallback,
 	TunerStudioHandleCrcCommand,
-	PwmConfigTogglePwmState,
+	Unused,
 	PwmConfigStateChangeCallback,
 	Temporary1,
 	Temporary2,
@@ -60,53 +64,52 @@ enum class PE : uint8_t {
 	EngineSniffer,
 	PrepareIgnitionSchedule,
 	Hip9011IntHoldCallback,
+	GlobalLock,
+	GlobalUnlock,
+	SoftwareKnockProcess,
+	KnockAnalyzer,
+	LogTriggerTooth,
+	LuaTickFunction,
+	LuaOneCanRxFunction,
+	LuaAllCanRxFunction,
+	LuaOneCanRxCallback,
+  LuaOneCanTxFunction,
 	// enum_end_tag
 	// The tag above is consumed by PerfTraceTool.java
 	// please note that the tool requires a comma at the end of last value
 };
 
-void perfEventBegin(PE event, uint8_t data = 0);
-void perfEventEnd(PE event, uint8_t data = 0);
-void perfEventInstantGlobal(PE event, uint8_t data = 0);
+void perfEventBegin(PE event);
+void perfEventEnd(PE event);
+void perfEventInstantGlobal(PE event);
 
 // Enable one buffer's worth of perf tracing, and retrieve the buffer size in bytes
 void perfTraceEnable();
 
-struct TraceBufferResult
-{
-	const uint8_t* const Buffer;
-	const size_t Size;
-};
-
 // Retrieve the trace buffer
-const TraceBufferResult perfTraceGetBuffer();
+const BigBufferHandle perfTraceGetBuffer();
 
 #if ENABLE_PERF_TRACE
 class ScopePerf
 {
 public:
-	ScopePerf(PE event) : ScopePerf(event, 0) {}
-
-	ScopePerf(PE event, uint8_t data) : m_event(event), m_data(data)
-	{
-		perfEventBegin(event, data);
+	ScopePerf(PE event) : m_event(event) {
+		perfEventBegin(event);
 	}
 
 	~ScopePerf()
 	{
-		perfEventEnd(m_event, m_data);
+		perfEventEnd(m_event);
 	}
 
 private:
 	const PE m_event;
-	const uint8_t m_data;
 };
 
 #else /* if ENABLE_PERF_TRACE */
 
 struct ScopePerf {
-	ScopePerf(PE event) { (void)event; }
-	ScopePerf(PE event, uint8_t data) { (void)event; (void)data; }
+	ScopePerf(PE) {}
 };
 
 #endif /* ENABLE_PERF_TRACE */

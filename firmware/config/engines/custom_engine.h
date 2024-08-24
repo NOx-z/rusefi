@@ -8,17 +8,39 @@
 #pragma once
 
 #include "engine_configuration.h"
+void setFrankensoConfiguration();
+void setDiscoveryPdm();
+void setFrankensoBoardTestConfiguration();
+void setDiscovery33810Test();
+void setDiscoveryTLE9104Test();
+void setEtbTestConfiguration();
+void setL9779TestConfiguration();
 
-void setFrankensoConfiguration(DECLARE_CONFIG_PARAMETER_SIGNATURE);
-void setFrankenso_01_LCD(engine_configuration_s *engineConfiguration);
-void disableLCD(engine_configuration_s *engineConfiguration);
-void runSchedulingPrecisionTestIfNeeded(void);
-void setFrankensoBoardTestConfiguration(DECLARE_CONFIG_PARAMETER_SIGNATURE);
-void setEtbTestConfiguration(DECLARE_CONFIG_PARAMETER_SIGNATURE);
-void setTle8888TestConfiguration(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+void setEepromTestConfiguration();
 
-void setIssue898(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+void mreBoardNewTest();
+void mreSecondaryCan();
+void mreBCM();
+void setBodyControlUnit();
 
-void mreBoardTest(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+void fuelBenchMode();
 
-void setTest33816EngineConfiguration(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+/**
+ * PROTEUS_QC_TEST_BOARD
+ * set engine_type 42
+ */
+void proteusBoardTest();
+void proteusLuaDemo();
+void proteusStimQc();
+void proteusDcWastegateTest();
+
+void setTest33816EngineConfiguration();
+void setBoschHDEV_5_injectors();
+
+void setRotary();
+void setVrThresholdTest();
+
+void detectBoardType();
+
+void alphax4chanStimQc();
+void testEngine6451();

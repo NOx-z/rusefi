@@ -20,15 +20,9 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "event_registry.h"
-#include "global.h"
-#include "engine_math.h"
+#include "pch.h"
 
-InjectionEvent::InjectionEvent() {
-	isSimultanious = false;
-	ownIndex = 0;
-	memset(outputs, 0, sizeof(outputs));
-}
+#include "event_registry.h"
 
 IgnitionEvent::IgnitionEvent() {
 	memset(outputs, 0, sizeof(outputs));

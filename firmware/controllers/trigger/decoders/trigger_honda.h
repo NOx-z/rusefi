@@ -7,19 +7,9 @@
 
 #pragma once
 
-#include "trigger_structure.h"
-
-void configureHondaAccordCDDip(TriggerWaveform *s);
-void configureHondaAccordShifted(TriggerWaveform *s);
-
-void configureHonda_1_4_24(TriggerWaveform *s, bool withOneEventSignal, bool withFourEventSignal,
-		trigger_wheel_e const oneEventWave,
-		trigger_wheel_e const fourEventWave,
-		float d);
-
-void configureOnePlus16(TriggerWaveform *s, operation_mode_e operationMode);
+class TriggerWaveform;
 
 void configureHondaCbr600(TriggerWaveform *s);
-void configureHondaCbr600custom(TriggerWaveform *s);
 
-
+void configureHondaK_12_1(TriggerWaveform *s);
+void configureHondaK_4_1(TriggerWaveform *s);

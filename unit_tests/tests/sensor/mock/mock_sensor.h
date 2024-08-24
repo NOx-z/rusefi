@@ -1,7 +1,6 @@
 #pragma once
 
 #include "stored_value_sensor.h"
-#include "global.h"
 
 struct MockSensor final : public StoredValueSensor
 {
@@ -9,15 +8,24 @@ struct MockSensor final : public StoredValueSensor
 	{
 	}
 
-	void set(float value)
-	{
-		setValidValue(value, 0);
+	void set(float value) {
+		setValidValue(value, getTimeNowNt());
 	}
 
-	void invalidate()
-	{
+	void invalidate() {
 		StoredValueSensor::invalidate();
 	}
 
-	void showInfo(Logging* logger, const char* name) const override {}
+	bool hasSensor() const override {
+		return m_hasSensor;
+	}
+
+	void setHasSensor(bool h) {
+		m_hasSensor = h;
+	}
+
+	void showInfo(const char* name) const override {}
+
+private:
+	bool m_hasSensor = true;
 };

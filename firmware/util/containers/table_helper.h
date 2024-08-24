@@ -8,164 +8,136 @@
 #pragma once
 
 #include <math.h>
-#include "error_handling.h"
-#include "interpolation.h"
+#include "efi_interpolation.h"
 #include "efilib.h"
+#include "efi_ratio.h"
+#include "efi_scaled_channel.h"
+#include <rusefi/interpolation.h>
+
+#if EFI_UNIT_TEST
+#include <stdexcept>
+#endif
 
 // popular left edge of CLT-based correction curves
 #define CLT_CURVE_RANGE_FROM -40
 
 class ValueProvider3D {
 public:
-	virtual float getValue(float xRpm, float y) const = 0;
+	virtual float getValue(float xColumn, float yRow) const = 0;
 };
 
 
 /**
  * this helper class brings together 3D table with two 2D axis curves
+ * TODO: explicitly spell out why do we have this template and when exactly is it useful
+ * *** WARNING *** https://en.wikipedia.org/wiki/KISS_principle
+ * *** WARNING *** this helper requires initialization, make sure that helper is useful any time you consider using it
+ * *** WARNING *** we had too many bugs where we were not initializing, often just using the underlying interpolate3d is the way to go
  */
-template<int RPM_BIN_SIZE, int LOAD_BIN_SIZE, typename vType, typename kType>
+template<int TColNum, int TRowNum, typename TValue, typename TXColumn, typename TRow>
 class Map3D : public ValueProvider3D {
 public:
-	explicit Map3D(const char*name);
-	Map3D(const char*name, float multiplier);
-	void init(vType table[RPM_BIN_SIZE][LOAD_BIN_SIZE], const kType loadBins[LOAD_BIN_SIZE], const kType rpmBins[RPM_BIN_SIZE]);
-	float getValue(float xRpm, float y) const;
-	void setAll(vType value);
-	vType *pointers[LOAD_BIN_SIZE];
-private:
-	void create(const char*name, float multiplier);
-	const kType *loadBins = NULL;
-	const kType *rpmBins = NULL;
-	bool initialized =  false;
-	const char *name;
-	float multiplier;
-};
-
-/*
- * this dead code is a questionable performance optimization idea: instead of division every time
- * we want interpolation for a curve we can pre-calculate A and B and save the division at the cost of more RAM usage
- * Realistically we probably value RAM over CPU at this time and the costs are not justified.
-template<int SIZE>
-class Table2D {
-public:
-	Table2D();
-	void preCalc(float *bin, float *values);
-	float aTable[SIZE];
-	float bTable[SIZE];
-	float *bin;
-};
-template<int SIZE>
-Table2D<SIZE>::Table2D() {
-	bin = NULL;
-}
-
-template<int SIZE>
-void Table2D<SIZE>::preCalc(float *bin, float *values) {
-	this->bin = bin;
-	for (int i = 0; i < SIZE - 1; i++) {
-		float x1 = bin[i];
-		float x2 = bin[i + 1];
-		if (x1 == x2) {
-			warning(CUSTOM_INTEPOLATE_ERROR_4, "preCalc: Same x1 and x2 in interpolate: %.2f/%.2f", x1, x2);
-			return;
-		}
-
-		float y1 = values[i];
-		float y2 = values[i + 1];
-
-		aTable[i] = INTERPOLATION_A(x1, y1, x2, y2);
-		bTable[i] = y1 - aTable[i] * x1;
-	}
-}
-*/
-
-template<int RPM_BIN_SIZE, int LOAD_BIN_SIZE, typename vType, typename kType>
-void Map3D<RPM_BIN_SIZE, LOAD_BIN_SIZE, vType, kType>::init(vType table[RPM_BIN_SIZE][LOAD_BIN_SIZE],
-		const kType loadBins[LOAD_BIN_SIZE],
-		const kType rpmBins[RPM_BIN_SIZE]) {
-	// this method cannot use logger because it's invoked before everything
-	// that's because this method needs to be invoked before initial configuration processing
-	// and initial configuration load is done prior to logging initialization
-
-  for (int k = 0; k < LOAD_BIN_SIZE; k++) {
-		pointers[k] = table[k];
+  Map3D(const char *name) {
+    m_name = name;
   }
-	initialized = true;
-	this->loadBins = loadBins;
-	this->rpmBins = rpmBins;
-}
-
-template<int RPM_BIN_SIZE, int LOAD_BIN_SIZE, typename vType, typename kType>
-float Map3D<RPM_BIN_SIZE, LOAD_BIN_SIZE, vType, kType>::getValue(float xRpm, float y) const {
-	efiAssert(CUSTOM_ERR_ASSERT, initialized, "map not initialized", NAN);
-	if (cisnan(y)) {
-		warning(CUSTOM_PARAM_RANGE, "%s: y is NaN", name);
-		return NAN;
+	template <typename TValueInit, typename TXColumnInit, typename TRowInit>
+	void initTable(TValueInit (&table)[TRowNum][TColNum],
+				  const TXColumnInit (&columnBins)[TColNum], const TRowInit (&rowBins)[TRowNum]) {
+		// This splits out here so that we don't need one overload of init per possible combination of table/rows/columns types/dimensions
+		// Overload resolution figures out the correct versions of the functions below to call, some of which have assertions about what's allowed
+		initValues(table);
+		initRows(rowBins);
+		initCols(columnBins);
 	}
-	// todo: we have a bit of a mess: in TunerStudio, RPM is X-axis
-	return multiplier * interpolate3d<vType, kType>(y, loadBins, LOAD_BIN_SIZE, xRpm, rpmBins, RPM_BIN_SIZE, pointers);
-}
 
-template<int RPM_BIN_SIZE, int LOAD_BIN_SIZE, typename vType, typename kType>
-Map3D<RPM_BIN_SIZE, LOAD_BIN_SIZE, vType, kType>::Map3D(const char *name) {
-	create(name, 1);
-}
+  // RPM is usually X/Column
+	float getValue(float xColumn, float yRow) const final {
+		if (!m_values) {
+			criticalError("Access to uninitialized table: %s", m_name);
+			return 0;
+		}
 
-template<int RPM_BIN_SIZE, int LOAD_BIN_SIZE, typename vType, typename kType>
-Map3D<RPM_BIN_SIZE, LOAD_BIN_SIZE, vType, kType>::Map3D(const char *name, float multiplier) {
-	create(name, multiplier);
-}
+		return interpolate3d(*m_values,
+								*m_rowBins, yRow * m_rowMult,
+								*m_columnBins, xColumn * m_colMult) *
+			m_valueMult;
+	}
 
-template<int RPM_BIN_SIZE, int LOAD_BIN_SIZE, typename vType, typename kType>
-void Map3D<RPM_BIN_SIZE, LOAD_BIN_SIZE, vType, kType>::create(const char *name, float multiplier) {
-	this->name = name;
-	this->multiplier = multiplier;
-	memset(&pointers, 0, sizeof(pointers));
-}
+	void setAll(TValue value) {
+		efiAssertVoid(ObdCode::CUSTOM_ERR_6573, m_values, "map not initialized");
 
-template<int RPM_BIN_SIZE, int LOAD_BIN_SIZE, typename vType, typename kType>
-void Map3D<RPM_BIN_SIZE, LOAD_BIN_SIZE, vType, kType>::setAll(vType value) {
-	efiAssertVoid(CUSTOM_ERR_6573, initialized, "map not initialized");
-	for (int l = 0; l < LOAD_BIN_SIZE; l++) {
-		for (int r = 0; r < RPM_BIN_SIZE; r++) {
-			pointers[l][r] = value / multiplier;
+		for (size_t r = 0; r < TRowNum; r++) {
+			for (size_t c = 0; c < TColNum; c++) {
+				(*m_values)[r][c] = value / m_valueMult;
+			}
 		}
 	}
-}
 
-template<int RPM_BIN_SIZE, int LOAD_BIN_SIZE, typename vType, typename kType>
-void copy2DTable(const vType source[LOAD_BIN_SIZE][RPM_BIN_SIZE], vType destination[LOAD_BIN_SIZE][RPM_BIN_SIZE]) {
-	for (int k = 0; k < LOAD_BIN_SIZE; k++) {
-		for (int rpmIndex = 0; rpmIndex < RPM_BIN_SIZE; rpmIndex++) {
-			destination[k][rpmIndex] = source[k][rpmIndex];
-		}
+private:
+	template <int TMult, int TDiv>
+	void initValues(scaled_channel<TValue, TMult, TDiv> (&table)[TRowNum][TColNum]) {
+		m_values = reinterpret_cast<TValue (*)[TRowNum][TColNum]>(&table);
+		m_valueMult = 1 / efi::ratio<TMult, TDiv>::asFloat();
 	}
-}
 
-/**
- * AFR value is packed into uint8_t with a multiplier of 10
- */
-#define AFR_STORAGE_MULT 10
-/**
- * TPS-based Advance value is packed into int16_t with a multiplier of 100
- */
-#define ADVANCE_TPS_STORAGE_MULT 100
+	void initValues(TValue (&table)[TRowNum][TColNum]) {
+		m_values = &table;
+		m_valueMult = 1;
+	}
 
-typedef Map3D<FUEL_RPM_COUNT, FUEL_LOAD_COUNT, uint8_t, float> afr_Map3D_t;
-typedef Map3D<IGN_RPM_COUNT, IGN_LOAD_COUNT, float, float> ign_Map3D_t;
-typedef Map3D<IGN_RPM_COUNT, IGN_TPS_COUNT, int16_t, float> ign_tps_Map3D_t;
-typedef Map3D<FUEL_RPM_COUNT, FUEL_LOAD_COUNT, float, float> fuel_Map3D_t;
-typedef Map3D<BARO_CORR_SIZE, BARO_CORR_SIZE, float, float> baroCorr_Map3D_t;
-typedef Map3D<PEDAL_TO_TPS_SIZE, PEDAL_TO_TPS_SIZE, uint8_t, uint8_t> pedal2tps_t;
-typedef Map3D<BOOST_RPM_COUNT, BOOST_LOAD_COUNT, uint8_t, uint8_t> boostOpenLoop_Map3D_t;
-typedef Map3D<BOOST_RPM_COUNT, BOOST_LOAD_COUNT, uint8_t, uint8_t> boostClosedLoop_Map3D_t;
-typedef Map3D<IAC_PID_MULT_SIZE, IAC_PID_MULT_SIZE, uint8_t, uint8_t> iacPidMultiplier_t;
+	template <int TRowMult, int TRowDiv>
+	void initRows(const scaled_channel<TRow, TRowMult, TRowDiv> (&rowBins)[TRowNum]) {
+		m_rowBins = reinterpret_cast<const TRow (*)[TRowNum]>(&rowBins);
+		m_rowMult = efi::ratio<TRowMult, TRowDiv>::asFloat();
+	}
 
-void setRpmBin(float array[], int size, float idleRpm, float topRpm);
+	void initRows(const TRow (&rowBins)[TRowNum]) {
+		m_rowBins = &rowBins;
+		m_rowMult = 1;
+	}
+
+	template <int TColMult, int TColDiv>
+	void initCols(const scaled_channel<TXColumn, TColMult, TColDiv> (&columnBins)[TColNum]) {
+		m_columnBins = reinterpret_cast<const TXColumn (*)[TColNum]>(&columnBins);
+		m_colMult = efi::ratio<TColMult, TColDiv>::asFloat();
+	}
+
+	void initCols(const TXColumn (&columnBins)[TColNum]) {
+		m_columnBins = &columnBins;
+		m_colMult = 1;
+	}
+
+	static size_t getIndexForCoordinates(size_t row, size_t column) {
+		// Index 0 is bottom left corner
+		// Index TColNum - 1 is bottom right corner
+		// indicies count right, then up
+		return row * TColNum + column;
+	}
+
+	TValue getValueAtPosition(size_t row, size_t column) const {
+		auto idx = getIndexForCoordinates(row, column);
+		return m_values[idx];
+	}
+
+	// TODO: should be const
+	/*const*/ TValue (*m_values)[TRowNum][TColNum] = nullptr;
+
+	const TRow (*m_rowBins)[TRowNum] = nullptr;
+	const TXColumn (*m_columnBins)[TColNum] = nullptr;
+
+	float m_rowMult = 1;
+	float m_colMult = 1;
+	float m_valueMult = 1;
+	const char *m_name;
+};
+
+typedef Map3D<FUEL_RPM_COUNT, FUEL_LOAD_COUNT, uint16_t, uint16_t, uint16_t> fuel_Map3D_t;
+typedef Map3D<PEDAL_TO_TPS_SIZE, PEDAL_TO_TPS_SIZE, uint8_t, uint8_t, uint8_t> pedal2tps_t;
+typedef Map3D<FUEL_RPM_COUNT, FUEL_LOAD_COUNT, uint16_t, uint16_t, uint16_t> mapEstimate_Map3D_t;
 
 /**
  * @param precision for example '0.1' for one digit fractional part. Default to 0.01, two digits.
+ * see also: ensureArrayIsAscending
  */
 template<typename TValue, int TSize>
 void setLinearCurve(TValue (&array)[TSize], float from, float to, float precision = 0.01f) {
@@ -180,10 +152,54 @@ void setLinearCurve(TValue (&array)[TSize], float from, float to, float precisio
 }
 
 template<typename TValue, int TSize>
-void setArrayValues(TValue (&array)[TSize], TValue value) {
+void setArrayValues(TValue (&array)[TSize], float value) {
 	for (int i = 0; i < TSize; i++) {
 		array[i] = value;
 	}
 }
 
-void setRpmTableBin(float array[], int size);
+template <typename TElement, typename VElement, size_t N, size_t M>
+constexpr void setTable(TElement (&dest)[N][M], const VElement value) {
+	for (size_t n = 0; n < N; n++) {
+		for (size_t m = 0; m < M; m++) {
+			dest[n][m] = value;
+		}
+	}
+}
+
+template <typename TDest, typename TSource, size_t N, size_t M>
+constexpr void copyTable(TDest (&dest)[N][M], const TSource (&source)[N][M], float multiply = 1.0f) {
+	for (size_t n = 0; n < N; n++) {
+		for (size_t m = 0; m < M; m++) {
+			dest[n][m] = source[n][m] * multiply;
+		}
+	}
+}
+
+// specialization that can use memcpy when src and dest types match
+template <typename TDest, size_t N, size_t M>
+constexpr void copyTable(scaled_channel<TDest, 1, 1> (&dest)[N][M], const TDest (&source)[N][M]) {
+	memcpy(dest, source, N * M * sizeof(TDest));
+}
+
+template <typename TDest, size_t N, size_t M>
+constexpr void copyTable(TDest (&dest)[N][M], const TDest (&source)[N][M]) {
+	memcpy(dest, source, N * M * sizeof(TDest));
+}
+
+template<typename kType>
+void setRpmBin(kType array[], int size, float idleRpm, float topRpm) {
+	array[0] = idleRpm - 150;
+	int rpmStep = (int)(efiRound((topRpm - idleRpm) / (size - 2), 50) - 150);
+	for (int i = 1; i < size - 1;i++)
+		array[i] = idleRpm + rpmStep * (i - 1);
+	array[size - 1] = topRpm;
+}
+
+/**
+ * initialize RPM table axis using default RPM range
+ */
+template<typename TValue, int TSize>
+void setRpmTableBin(TValue (&array)[TSize]) {
+	setRpmBin(array, TSize, 800, DEFAULT_RPM_AXIS_HIGH_VALUE);
+}

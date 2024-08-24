@@ -7,7 +7,8 @@
 
 #pragma once
 
-#include "globalaccess.h"
+#include "global_shared.h"
+#include "engine_module.h"
 #include "engine_state.h"
 #include "rpm_calculator.h"
 #include "event_registry.h"
@@ -16,21 +17,60 @@
 #include "accel_enrichment.h"
 #include "trigger_central.h"
 #include "local_version_holder.h"
+#include "buttonshift.h"
+#include "gear_controller.h"
+#include "high_pressure_fuel_pump.h"
+#include "limp_manager.h"
+#include "pin_repository.h"
+#include "ac_control.h"
+#include "knock_logic.h"
+#include "idle_state_generated.h"
+#include "sent_state_generated.h"
+#include "dc_motors_generated.h"
+#include "idle_thread.h"
+#include "injector_model.h"
+#include "launch_control.h"
+#include "antilag_system.h"
+#include "start_stop.h"
+#include "trigger_scheduler.h"
+#include "fuel_pump.h"
+#include "main_relay.h"
+#include "ac_control.h"
+#include "type_list.h"
+#include "boost_control.h"
+#include "ignition_controller.h"
+#include "alternator_controller.h"
+#include "harley_acr.h"
+#include "dfco.h"
+#include "fuel_computer.h"
+#include "gear_detector.h"
+#include "advance_map.h"
+#include "fan_control.h"
+#include "sensor_checker.h"
+#include "fuel_schedule.h"
+#include "prime_injection.h"
+#include "throttle_model.h"
+#include "gc_generic.h"
+#include "lambda_monitor.h"
+#include "efi_output.h"
+#include "vvt.h"
+#include "trip_odometer.h"
 
-#if EFI_SIGNAL_EXECUTOR_ONE_TIMER
-// PROD real firmware uses this implementation
-#include "single_timer_executor.h"
-#endif /* EFI_SIGNAL_EXECUTOR_ONE_TIMER */
-#if EFI_SIGNAL_EXECUTOR_SLEEP
-#include "signal_executor_sleep.h"
-#endif /* EFI_SIGNAL_EXECUTOR_SLEEP */
-#if EFI_UNIT_TEST
-#include "global_execution_queue.h"
-#endif /* EFI_UNIT_TEST */
+#include <functional>
 
-#define FAST_CALLBACK_PERIOD_MS 5
+#ifndef EFI_UNIT_TEST
+#error EFI_UNIT_TEST must be defined!
+#endif
 
-class RpmCalculator;
+#ifndef EFI_SIMULATOR
+#error EFI_SIMULATOR must be defined!
+#endif
+
+#ifndef EFI_PROD_CODE
+#error EFI_PROD_CODE must be defined!
+#endif
+
+struct AirmassModelBase;
 
 #define MAF_DECODING_CACHE_SIZE 256
 
@@ -45,297 +85,290 @@ class RpmCalculator;
 #define CLEANUP_MODE_TPS 90
 #define STEPPER_PARKING_TPS CLEANUP_MODE_TPS
 
-#define CYCLE_ALTERNATION 2
-
 class IEtbController;
 
-class Engine : public TriggerStateListener {
+class Engine final : public TriggerStateListener {
 public:
-	explicit Engine(persistent_config_s *config);
 	Engine();
 
-	IEtbController *etbControllers[ETB_COUNT];
+	StartStopState startStopState;
 
-	cyclic_buffer<int> triggerErrorDetection;
+	// todo: technical debt: enableOverdwellProtection #3553
+	bool enableOverdwellProtection = true;
+
+	TunerStudioOutputChannels outputChannels;
+
+	/**
+	 * Sometimes for instance during shutdown we need to completely supress CAN TX
+	 */
+	bool allowCanTx = true;
+
+	// used by HW CI
+	bool isPwmEnabled = true;
+
+	const char *prevOutputName = nullptr;
+	/**
+	 * ELM327 cannot handle both RX and TX at the same time, we have to stay quite once first ISO/TP packet was detected
+	 * this is a pretty temporary hack only while we are trying ELM327, long term ISO/TP and rusEFI broadcast should find a way to coexists
+	 */
+	bool pauseCANdueToSerial = false;
+
+	PinRepository pinRepository;
+
+	IEtbController *etbControllers[ETB_COUNT] = {nullptr};
+
+#if EFI_ENGINE_CONTROL
+	FuelComputer fuelComputer;
+#endif // EFI_ENGINE_CONTROL
+
+	type_list<
+		Mockable<InjectorModelPrimary>,
+		Mockable<InjectorModelSecondary>,
+#if EFI_IDLE_CONTROL
+		Mockable<IdleController>,
+#endif // EFI_IDLE_CONTROL
+		TriggerScheduler,
+#if EFI_HPFP && EFI_ENGINE_CONTROL
+		HpfpController,
+#endif // EFI_HPFP && EFI_ENGINE_CONTROL
+#if EFI_ENGINE_CONTROL
+		Mockable<ThrottleModel>,
+#endif // EFI_ENGINE_CONTROL
+#if EFI_ALTERNATOR_CONTROL
+		AlternatorController,
+#endif /* EFI_ALTERNATOR_CONTROL */
+		FuelPumpController,
+		MainRelayController,
+		IgnitionController,
+		Mockable<AcController>,
+		FanControl1,
+		FanControl2,
+		PrimeController,
+		DfcoController,
+#if EFI_HD_ACR
+		HarleyAcr,
+#endif // EFI_HD_ACR
+		Mockable<WallFuelController>,
+#if EFI_VEHICLE_SPEED
+		GearDetector,
+		TripOdometer,
+#endif // EFI_VEHICLE_SPEED
+		KnockController,
+		SensorChecker,
+#if EFI_ENGINE_CONTROL
+		LimpManager,
+#endif // EFI_ENGINE_CONTROL
+#if EFI_VVT_PID
+		VvtController1,
+		VvtController2,
+		VvtController3,
+		VvtController4,
+#endif // EFI_VVT_PID
+#if EFI_BOOST_CONTROL
+		BoostController,
+#endif // EFI_BOOST_CONTROL
+		TpsAccelEnrichment,
+		EngineModule // dummy placeholder so the previous entries can all have commas
+		> engineModules;
+
+	/**
+	 * Slightly shorter helper function to keep the code looking clean.
+	 */
+	template<typename get_t>
+	constexpr auto & module() {
+		return engineModules.get<get_t>();
+	}
+
+#if EFI_TCU
+	GearControllerBase *gearController = nullptr;
+#endif
+
+	// todo: boolean sensors should leverage sensor framework #6342
+	SwitchedState clutchUpSwitchedState;
+   	SwitchedState brakePedalSwitchedState;
+   	SwitchedState acButtonSwitchedState;
+  SimpleSwitchedState luaDigitalInputState[LUA_DIGITAL_INPUT_COUNT];
+
+#if EFI_LAUNCH_CONTROL
+	LaunchControlBase launchController;
+	SoftSparkLimiter softSparkLimiter;
+	// technically not directly related to EFI_LAUNCH_CONTROL since useful for TCU
+	SoftSparkLimiter hardSparkLimiter;
+#endif // EFI_LAUNCH_CONTROL
+
+#if EFI_ANTILAG_SYSTEM
+	AntilagSystemBase antilagController;
+#endif // EFI_ANTILAG_SYSTEM
+
+#if EFI_ANTILAG_SYSTEM
+//	SoftSparkLimiter ALSsoftSparkLimiter;
+#endif /* EFI_ANTILAG_SYSTEM */
 
 #if EFI_SHAFT_POSITION_INPUT
-	void OnTriggerStateDecodingError();
+	LambdaMonitor lambdaMonitor;
+#endif // EFI_ENGINE_CONTROL
+
+	IgnitionState ignitionState;
+	void resetLua();
+
+#if EFI_SHAFT_POSITION_INPUT
 	void OnTriggerStateProperState(efitick_t nowNt) override;
-	void OnTriggerSyncronization(bool wasSynchronized) override;
-	void OnTriggerInvalidIndex(int currentIndex) override;
+	void OnTriggerSynchronization(bool wasSynchronized, bool isDecodingError) override;
 	void OnTriggerSynchronizationLost() override;
 #endif
 
-	void setConfig(persistent_config_s *config);
-	injection_mode_e getCurrentInjectionMode(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-
-	LocalVersionHolder versionForConfigurationListeners;
-	LocalVersionHolder auxParametersVersion;
-	operation_mode_e getOperationMode(DECLARE_ENGINE_PARAMETER_SIGNATURE);
+	void setConfig();
 
 	AuxActor auxValves[AUX_DIGITAL_VALVE_COUNT][2];
 
 #if EFI_UNIT_TEST
 	bool needTdcCallback = true;
+private:
+	int bailedOnDwellCount = 0;
+public:
+	int getBailedOnDwellCount() const { return bailedOnDwellCount; }
+	void incrementBailedOnDwellCount() { bailedOnDwellCount++; }
 #endif /* EFI_UNIT_TEST */
 
-
-#if EFI_LAUNCH_CONTROL
-	bool launchActivatePinState = false;
-	bool isLaunchCondition = false;
-	bool applyLaunchExtraFuel = false;
-	bool setLaunchBoostDuty = false;
-	bool applyLaunchControlRetard = false;
-	bool rpmHardCut = false;
-#endif /* EFI_LAUNCH_CONTROL */
-
-	/**
-	 * if 2nd TPS is not configured we do not run 2nd ETB
-	 */
-	int etbActualCount = 0;
-
-	/**
-	 * By the way 32-bit value should hold at least 400 hours of events at 6K RPM x 12 events per revolution
-	 */
-	int globalSparkIdCounter = 0;
-
-	// this is useful at least for real hardware integration testing - maybe a proper solution would be to simply
-	// GND input pins instead of leaving them floating
-	bool hwTriggerInputEnabled = true;
-
-
-#if !EFI_PROD_CODE
-	float mockMapValue = 0;
-#endif
-
 	int getGlobalConfigurationVersion(void) const;
-	/**
-	 * true if a recent configuration change has changed any of the trigger settings which
-	 * we have not adjusted for yet
-	 */
-	bool isTriggerConfigChanged = false;
-	LocalVersionHolder triggerVersion;
+
 
 	// a pointer with interface type would make this code nicer but would carry extra runtime
 	// cost to resolve pointer, we use instances as a micro optimization
 #if EFI_SIGNAL_EXECUTOR_ONE_TIMER
+  // while theoretically PROD could be using EFI_SIGNAL_EXECUTOR_SLEEP, as of 2024 all PROD uses SingleTimerExecutor
 	SingleTimerExecutor executor;
 #endif
 #if EFI_SIGNAL_EXECUTOR_SLEEP
+  // at the moment this one is used exclusively by x86 simulator it should theoretically be possible to make it available in embedded if needed
 	SleepExecutor executor;
 #endif
 #if EFI_UNIT_TEST
 	TestExecutor executor;
-#endif
+
+	std::function<void(IgnitionEvent*, bool)> onIgnitionEvent;
+	std::function<void(const IgnitionEvent&, efitick_t, angle_t, efitick_t)> onScheduleTurnSparkPinHighStartCharging
+			= [](const IgnitionEvent&, efitick_t, angle_t, efitick_t) -> void {};
+	std::function<void(const IgnitionEvent&, efitick_t)> onScheduleOverFireSparkAndPrepareNextSchedule
+			= [](const IgnitionEvent&, efitick_t) -> void {};
+#endif // EFI_UNIT_TEST
 
 #if EFI_ENGINE_CONTROL
 	FuelSchedule injectionEvents;
 	IgnitionEventList ignitionEvents;
+	scheduling_s tdcScheduler[2];
 #endif /* EFI_ENGINE_CONTROL */
 
-	WallFuel wallFuel[INJECTION_PIN_COUNT];
-	bool needToStopEngine(efitick_t nowNt) const;
+    // todo: move to electronic_throttle something?
 	bool etbAutoTune = false;
-	/**
-	 * That's the linked list of pending events scheduled in relation to trigger
-	 * At the moment we iterate over the whole list while looking for events for specific trigger index
-	 * We can make it an array of lists per trigger index, but that would take some RAM and probably not needed yet.
-	 */
-	AngleBasedEvent *angleBasedEventsHead = nullptr;
-	/**
-	 * this is based on isEngineChartEnabled and engineSnifferRpmThreshold settings
-	 */
-	bool isEngineChartEnabled = false;
-	/**
-	 * this is based on sensorChartMode and sensorSnifferRpmThreshold settings
-	 */
-	sensor_chart_e sensorChartMode = SC_OFF;
-	/**
-	 * based on current RPM and isAlternatorControlEnabled setting
-	 */
-	bool isAlternatorControlEnabled = false;
 
-	bool isCltBroken = false;
+#if EFI_UNIT_TEST
+	bool tdcMarkEnabled = true;
+#endif // EFI_UNIT_TEST
+
+
 	bool slowCallBackWasInvoked = false;
 
-	/**
-	 * remote telemetry: if not zero, time to stop flashing 'CALL FROM PIT STOP' light
-	 * todo: looks like there is a bug here? 64 bit storage an 32 bit time logic? anyway this feature is mostly a dream at this point
-	 */
-	efitimems64_t callFromPitStopEndTime = 0;
-
-	/**
-	 * This flag indicated a big enough problem that engine control would be
-	 * prohibited if this flag is set to true.
-	 */
-	bool withError = false;
-
 	RpmCalculator rpmCalculator;
-	persistent_config_s *config = nullptr;
-	/**
-	 * we use funny unique name to make sure that compiler is not confused between global variable and class member
-	 * todo: this variable is probably a sign of some problem, should we even have it?
-	 */
-	engine_configuration_s *engineConfigurationPtr = nullptr;
 
-	/**
-	 * this is about 'stopengine' command
-	 */
-	efitick_t stopEngineRequestTimeNt = 0;
-
-
-	bool startStopState = false;
-	efitick_t startStopStateLastPushTime = 0;
-	int startStopStateToggleCounter = 0;
+	Timer configBurnTimer;
 
 	/**
 	 * This counter is incremented every time user adjusts ECU parameters online (either via rusEfi console or other
 	 * tuning software)
 	 */
-	volatile int globalConfigurationVersion = 0;
+	int globalConfigurationVersion = 0;
 
-	/**
-	 * always 360 or 720, never zero
-	 */
-	angle_t engineCycle;
-
-	LoadAccelEnrichment engineLoadAccelEnrichment;
-	TpsAccelEnrichment tpsAccelEnrichment;
-
+#if EFI_SHAFT_POSITION_INPUT
 	TriggerCentral triggerCentral;
+#endif // EFI_SHAFT_POSITION_INPUT
 
-	/**
-	 * Each individual fuel injection duration for current engine cycle, without wall wetting
-	 * including everything including injector lag, both cranking and running
-	 * @see getInjectionDuration()
-	 */
-	floatms_t injectionDuration = 0;
 
-	/**
-	 * This one with wall wetting accounted for, used for logging.
-	 */
-	floatms_t actualLastInjection = 0;
-
-	void periodicFastCallback(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-	void periodicSlowCallback(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-	void updateSlowSensors(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-	void initializeTriggerWaveform(Logging *logger DECLARE_ENGINE_PARAMETER_SUFFIX);
-
-	bool clutchUpState = false;
-	bool clutchDownState = false;
-	bool brakePedalState = false;
-
-	// todo: extract some helper which would contain boolean state and most recent toggle time?
-	bool acSwitchState = false;
-	efitimeus_t acSwitchLastChangeTime = 0;
+    /**
+      * See FAST_CALLBACK_PERIOD_MS
+      */
+	void periodicFastCallback();
+    /**
+      * See SLOW_CALLBACK_PERIOD_MS
+      */
+	void periodicSlowCallback();
+	void updateSlowSensors();
+	void updateSwitchInputs();
+	void updateTriggerWaveform();
 
 	bool isRunningPwmTest = false;
-
-
-	FsioState fsioState;
-
-	/**
-	 * Are we experiencing knock right now?
-	 */
-	bool knockNow = false;
-	/**
-	 * Have we experienced knock since engine was started?
-	 */
-	bool knockEver = false;
-	/**
-     * KnockCount is directly proportional to the degrees of ignition
-     * advance removed
-     */
-    int knockCount = 0;
-
-    float knockVolts = 0;
-
-    bool knockDebug = false;
-
-	efitimeus_t timeOfLastKnockEvent = 0;
 
 	/**
 	 * are we running any kind of functional test? this affect
 	 * some areas
 	 */
-	bool isTestMode = false;
+	bool isFunctionalTestMode = false;
 
 	void resetEngineSnifferIfInTestMode();
 
-	/**
-	 * pre-calculated offset for given sequence index within engine cycle
-	 * (not cylinder ID)
-	 */
-	angle_t ignitionPositionWithinEngineCycle[IGNITION_PIN_COUNT];
-	/**
-	 * pre-calculated reference to which output pin should be used for
-	 * given sequence index within engine cycle
-	 * todo: update documentation
-	 */
-	int ignitionPin[IGNITION_PIN_COUNT];
-
-	// Store current ignition mode for prepareIgnitionPinIndices()
-	ignition_mode_e ignitionModeForPinIndices = Force_4_bytes_size_ignition_mode;
-
-	/**
-	 * this is invoked each time we register a trigger tooth signal
-	 */
-	void onTriggerSignalEvent(efitick_t nowNt);
 	EngineState engineState;
+
+	dc_motors_s dc_motors;
+	sent_state_s sent_state;
+
+	/**
+	 * idle blip is a development tool: alternator PID research for instance have benefited from a repetitive change of RPM
+	 */
+	percent_t blipIdlePosition;
+	efitimeus_t timeToStopBlip = 0;
+	efitimeus_t timeToStopIdleTest = 0;
+
 	SensorsState sensors;
-	efitick_t lastTriggerToothEventTimeNt = 0;
 
+	void preCalculate();
 
-	/**
-	 * This coefficient translates ADC value directly into voltage adjusted according to
-	 * voltage divider configuration with just one multiplication. This is a future (?) performance optimization.
-	 */
-	float adcToVoltageInputDividerCoefficient = NAN;
-
-	/**
-	 * This field is true if we are in 'cylinder cleanup' state right now
-	 * see isCylinderCleanupEnabled
-	 */
-	bool isCylinderCleanupMode = false;
-
-	/**
-	 * value of 'triggerShape.getLength()'
-	 * pre-calculating this value is a performance optimization
-	 */
-	uint32_t engineCycleEventCount = 0;
-
-	void preCalculate(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-
-	void watchdog();
+	void efiWatchdog();
+	void onEngineHasStopped();
 
 	/**
 	 * Needed by EFI_MAIN_RELAY_CONTROL to shut down the engine correctly.
+	 * This method cancels shutdown if the ignition voltage is detected.
 	 */
 	void checkShutdown();
-	
+
 	/**
 	 * Allows to finish some long-term shutdown procedures (stepper motor parking etc.)
+	   Called when the ignition switch is turned off (vBatt is too low).
 	   Returns true if some operations are in progress on background.
 	 */
 	bool isInShutdownMode() const;
 
-	void knockLogic(float knockVolts DECLARE_ENGINE_PARAMETER_SUFFIX);
-	void printKnockState(void);
+	/**
+	 * The stepper does not work if the main relay is turned off (it requires +12V).
+	 * Needed by the stepper motor code to detect if it works.
+	 */
+	bool isMainRelayEnabled() const;
+
+	void onSparkFireKnockSense(uint8_t cylinderIndex, efitick_t nowNt);
+
+#if EFI_UNIT_TEST
+	AirmassModelBase* mockAirmassModel = nullptr;
+#endif
 
 private:
-	/**
-	 * By the way:
-	 * 'cranking' means engine is not stopped and the rpm are below crankingRpm
-	 * 'running' means RPM are above crankingRpm
-	 * 'spinning' means the engine is not stopped
-	 */
-	bool isSpinning = false;
 	void reset();
+
+	void injectEngineReferences();
 };
 
-void prepareShapes(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-void applyNonPersistentConfiguration(Logging * logger DECLARE_ENGINE_PARAMETER_SUFFIX);
-void prepareOutputSignals(DECLARE_ENGINE_PARAMETER_SIGNATURE);
+trigger_type_e getVvtTriggerType(vvt_mode_e vvtMode);
 
-void validateConfiguration(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-void doScheduleStopEngine(DECLARE_ENGINE_PARAMETER_SIGNATURE);
+void applyNonPersistentConfiguration();
+void prepareOutputSignals();
+
+void scheduleReboot();
+bool isLockedFromUser();
+void unlockEcu(int password);
+
+// These externs aren't needed for unit tests - everything is injected instead
+#if !EFI_UNIT_TEST
+extern Engine ___engine;
+static Engine * const engine = &___engine;
+#else // EFI_UNIT_TEST
+extern Engine *engine;
+#endif // EFI_UNIT_TEST

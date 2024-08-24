@@ -1,20 +1,105 @@
-name: Simulator CI
+name: Simulator
 
-on: [push,pull_request]
+on: [push, pull_request]
 
 jobs:
-  build:
-
+  # This is just to ensure the simulator compiles on Linux
+  build-simulator:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Install Simulator Deps
-      run: sudo apt-get update && sudo apt-get install -y gcc-multilib g++-multilib
+    - uses: actions/checkout@v4
 
-    - uses: actions/checkout@v1
+# todo: how to reduce code duplication of submodules list?
+    - name: Checkout Submodules
+      run: |
+        git submodule update --init --depth=1 firmware/ChibiOS
+        git submodule update --init --depth=1 firmware/ChibiOS-Contrib
+        git submodule update --init --depth=1 firmware/libfirmware
+        git submodule update --init --depth=1 firmware/ext/lua
+        git submodule update --init --depth=1 firmware/controllers/lua/luaaa
+        git submodule update --init --depth=1 firmware/controllers/can/wideband_firmware
+        git submodule update --init --depth=1 java_console/luaformatter
+        git submodule update --init --depth=1 java_console/peak-can-basic
+
+    - name: Print GCC version
+      working-directory: .
+      run: gcc -v
+
+    - name: Install multilib
+      run: |
+        sudo bash misc/actions/add-ubuntu-latest-apt-mirrors.sh
+        sudo apt-get install gcc-multilib g++-multilib mtools dosfstools zip
+
+    - uses: actions/setup-java@v4
       with:
-        submodules: recursive
+        distribution: 'zulu'
+        java-version: '11'
 
-    - name: Build Simulator
+    - name: Generate docs and enums
+      working-directory: ./firmware/
+      run: make docs-enums
+
+    - name: Gradle autotest java Using freshly generated java code
+      working-directory: ./java_tools
+      run: ./gradlew :autotest:shadowJar
+
+    - name: Compile Linux Simulator
       working-directory: ./simulator/
-      run: make -j4
+      run: make -j$(nproc) -r
+
+    - name: Run Simulator Functional Test
+      working-directory: ./java_tools/
+      run: ./gradlew simulatorFunctionalTestLauncherWithSimulator
+
+    - name: Run Linux Simulator for 10 seconds
+      working-directory: ./simulator/
+      run: ./build/rusefi_simulator 10
+
+    - name: Git Status and Simulator generated folder Status
+      run: |
+        git status
+        ls -l simulator/generated/
+
+    - name: Gradle tune-tools
+      working-directory: ./java_tools
+      run: ./gradlew :tune-tools:shadowJar
+
+    - name: Convert .bin from Linux Simulator into .xml
+      working-directory: ./simulator/
+      run: ./write_tune.sh ../firmware/tunerstudio/generated/rusefi_f407-discovery.ini
+
+    - name: Commit fresh generated default simulator tune
+      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master'}}
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub gen-default-tune Action"
+        git add "simulator/generated/*msq"
+        git add "simulator/generated/canned-tunes/*md"
+        OUT=$(git commit -m "Auto-generated default tune" 2>&1) || echo "commit failed, finding out why"
+        if echo "$OUT" | grep 'nothing to commit\|no changes added'; then
+          echo "default tune: looks like nothing to commit"
+          exit 0
+        elif echo "$OUT" | grep 'changed'; then
+          echo "COMMIT=true" >> $GITHUB_ENV
+          echo "default tune: looks like something has changed"
+          exit 0
+        else
+          echo "default tune: looks like something unexpected"
+          exit 1
+        fi
+        git stash
+        git pull --rebase
+
+    - name: Push fresh default tune
+      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && env.COMMIT == 'true'}}
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ github.token }}
+        branch: ${{ github.ref }}
+
+    - name: Upload Linux built simulator
+      uses: actions/upload-artifact@v4
+      with:
+        name: rusefi_simulator_linux
+        path: ./simulator/build/rusefi_simulator

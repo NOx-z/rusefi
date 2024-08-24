@@ -1,12 +1,12 @@
 /*
  * @file bmw_m73_mre.cpp
  *
- * https://github.com/rusefi/rusefi_documentation/wiki/BMW_e38_750
+ * https://github.com/rusefi/rusefi/wiki/BMW_e38_750
  *
  * https://rusefi.com/wiki/index.php?title=Hardware:OEM_connectors#134_pin
- * https://github.com/rusefi/rusefi_documentation/wiki/HOWTO_electronic_throttle_body
+ * https://github.com/rusefi/rusefi/wiki/HOWTO_electronic_throttle_body
  * Ignition module https://rusefi.com/forum/viewtopic.php?f=4&t=286
- * https://github.com/rusefi/rusefi_documentation/wiki/Hardware_microRusEfi_wiring
+ * https://github.com/rusefi/rusefi/wiki/Hardware_microRusEfi_wiring
  *
  * 1/2 plugs black
  * 2/2 plugs grey
@@ -60,77 +60,46 @@
  *
  */
 
+#include "pch.h"
+
 #include "bmw_m73.h"
-#include "fsio_impl.h"
 
-EXTERN_CONFIG;
-
-void setEngineBMW_M73_microRusEfi(DECLARE_CONFIG_PARAMETER_SIGNATURE) {
+void setEngineBMW_M73_microRusEfi() {
+	 m73engine();
 	// 13641435991 injector
 	engineConfiguration->injector.flow = 180; // cc/min, who knows if this number is real - no good source of info
 
-	CONFIG(isFasterEngineSpinUpEnabled) = true;
+	strcpy(engineConfiguration->vehicleName, "microRusEFIx2");
 
 	engineConfiguration->globalTriggerAngleOffset = 90;
-	engineConfiguration->specs.cylindersCount = 6;
-	engineConfiguration->specs.displacement = 5.4 / 2;
-	engineConfiguration->specs.firingOrder = FO_1_5_3_6_2_4;
+	engineConfiguration->cylindersCount = 6;
+	engineConfiguration->displacement = 5.4 / 2;
+	engineConfiguration->firingOrder = FO_1_5_3_6_2_4;
 
 	engineConfiguration->ignitionMode = IM_ONE_COIL;
 
 	engineConfiguration->injectionMode = IM_BATCH;
 
-	// enable ETB
-	// set_rpn_expression 8 "0"
-	setFsio(7, GPIOC_8, "0" PASS_CONFIG_PARAMETER_SUFFIX);
-
-
-	CONFIG(debugMode) = DBG_ELECTRONIC_THROTTLE_PID;
 	engineConfiguration->etb.pFactor = 2.00;
 	engineConfiguration->etb.iFactor = 0.35;
 
-	// set debug_mode 37
 	// 22 - AN Temp 4, orange wire
-	CONFIG(startStopButtonPin) = GPIOA_3;
+	engineConfiguration->startStopButtonPin = Gpio::A3;
 
 #if (BOARD_TLE8888_COUNT > 0)
 	// "43 - GP Out 4"
-	CONFIG(starterControlPin) = TLE8888_PIN_24;
+	engineConfiguration->starterControlPin = Gpio::TLE8888_PIN_24;
 #endif /* BOARD_TLE8888_COUNT */
 
 
-	engineConfiguration->canNbcType = CAN_BUS_NBC_NONE;
-#if EFI_CANBUS_SLAVE
-	engineConfiguration->canReadEnabled = true;
-	engineConfiguration->canWriteEnabled = false;
-#else /* EFI_CANBUS_SLAVE */
 	// set_analog_input_pin pps PA7
 	// EFI_ADC_7: "31 - AN volt 3" - PA7
-	CONFIG(throttlePedalPositionAdcChannel) = EFI_ADC_7;
+	engineConfiguration->throttlePedalPositionAdcChannel = EFI_ADC_7;
 
-	engineConfiguration->canReadEnabled = false;
-	engineConfiguration->canWriteEnabled = true;
-	CONFIG(enableVerboseCanTx) = true;
-#endif /* EFI_CANBUS_SLAVE */
+	engineConfiguration->enableVerboseCanTx = true;
 
+	engineConfiguration->trigger.type = trigger_type_e::TT_TOOTHED_WHEEL_60_2;
 
-	// do I have VR wires flipped?
-	engineConfiguration->trigger.type = TT_60_2_VW;
-
-	// this large engine seems to crank at around only 150 RPM? And happily idle at 400RPM?
-	engineConfiguration->cranking.rpm = 280;
-
-	CONFIG(crankingTimingAngle) = 15;
-
-	// I am too lazy to add MAP sensor
-	engineConfiguration->fuelAlgorithm = LM_ALPHA_N;
-
-	// set cranking_fuel 15
-	engineConfiguration->cranking.baseFuel = 15;
-
-	//set tps_min 891
-	CONFIG(tpsMin) = 891;
-	//set tps_max 177
-	CONFIG(tpsMax) = 177;
-
+	engineConfiguration->tpsMin = 891;
+	engineConfiguration->tpsMax = 177;
 }

@@ -1,0 +1,47 @@
+
+apply from: 'dependencies.gradle'
+
+allprojects {
+    repositories {
+        mavenCentral()
+    }
+
+    plugins.withType(JavaPlugin) {
+        dependencies {
+            // let's be vocal that 1.8 is not enough
+            sourceCompatibility = '11'
+            targetCompatibility = '11'
+
+            implementation global_libs.annotations
+            testImplementation global_libs.junit5
+            testImplementation global_libs.junit5engine
+        }
+
+      test {
+        // Enable JUnit 5
+        useJUnitPlatform()
+      }
+    }
+
+    gradle.projectsEvaluated {
+        tasks.withType(JavaCompile) {
+            options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
+        }
+    }
+
+    tasks.withType(JavaExec).configureEach {
+        if (name.endsWith("main()")) {
+            // https://github.com/gradle/gradle/issues/21364
+            notCompatibleWithConfigurationCache("JavaExec created by IntelliJ")
+        }
+    }
+}
+
+tasks.named('wrapper') {
+    distributionType = Wrapper.DistributionType.ALL
+}
+
+// gradlew allDeps
+subprojects {
+    task allDeps(type: DependencyReportTask) {}
+}

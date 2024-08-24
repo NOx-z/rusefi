@@ -7,67 +7,53 @@
 
 #pragma once
 
-// https://en.wikipedia.org/wiki/Nyquist%E2%80%93Shannon_sampling_theorem
-#define DEFAULT_ETB_LOOP_FREQUENCY 200
-#define DEFAULT_ETB_PWM_FREQUENCY 300
+#include "closed_loop_controller.h"
+#include "rusefi_types.h"
+#include "engine_configuration.h"
 
-#include "engine.h"
-#include "periodic_task.h"
+void initElectronicThrottle();
+void doInitElectronicThrottle();
 
-class DcMotor;
-class Logging;
+void setEtbIdlePosition(percent_t pos);
+void setEtbWastegatePosition(percent_t pos);
+void setEtbLuaAdjustment(percent_t adjustment);
+void setHitachiEtbCalibration();
 
-class IEtbController : public PeriodicTimerController {
-public:
-	DECLARE_ENGINE_PTR;
-	virtual void init(DcMotor *motor, int ownIndex, pid_s *pidParameters) = 0;
-	virtual void reset() = 0;
-};
+// same plug as 18919 AM810 but have different calibrations
+void setToyota89281_33010_pedal_position_sensor();
 
-class EtbController final : public IEtbController {
-public:
-	void init(DcMotor *motor, int ownIndex, pid_s *pidParameters) override;
+void setBoschVAGETB();
 
-	// PeriodicTimerController implementation
-	int getPeriodMs() override;
-	void PeriodicTask() override;
-	void reset() override;
-
-	// Called when the configuration may have changed.  Controller will
-	// reset if necessary.
-	void onConfigurationChange(pid_s* previousConfiguration);
-	
-	// Print this throttle's status.
-	void showStatus(Logging* logger);
-
-	// Used to inspect the internal PID controller's state
-	const pid_state_s* getPidState() const { return &m_pid; };
-
-private:
-	int m_myIndex;
-	DcMotor *m_motor;
-	Pid m_pid;
-	bool m_shouldResetPid = false;
-
-	// Autotune helpers
-	bool m_lastIsPositive = false;
-	efitick_t m_cycleStartTime = 0;
-	float m_minCycleTps = 0;
-	float m_maxCycleTps = 0;
-	float m_a = 0;
-	float m_tu = 0;
-};
-
-void initElectronicThrottle(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-void doInitElectronicThrottle(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-
-void setDefaultEtbBiasCurve(DECLARE_CONFIG_PARAMETER_SIGNATURE);
-void setDefaultEtbParameters(DECLARE_CONFIG_PARAMETER_SIGNATURE);
-void setBoschVNH2SP30Curve(DECLARE_CONFIG_PARAMETER_SIGNATURE);
-void setEtbPFactor(float value);
-void setEtbIFactor(float value);
-void setEtbDFactor(float value);
-void setEtbOffset(int value);
+void setDefaultEtbBiasCurve();
+void setDefaultEtbParameters();
+void setBoschVNH2SP30Curve();
 void setThrottleDutyCycle(percent_t level);
 void onConfigurationChangeElectronicThrottleCallback(engine_configuration_s *previousConfiguration);
 void unregisterEtbPins();
+void setProteusHitachiEtbDefaults();
+
+void etbAutocal(size_t throttleIndex);
+
+float getSanitizedPedal();
+
+class DcMotor;
+struct pid_s;
+class ValueProvider3D;
+struct pid_state_s;
+
+class IEtbController : public ClosedLoopController<percent_t, percent_t>  {
+public:
+	// Initialize the throttle.
+	// returns true if the throttle was initialized, false otherwise.
+	virtual bool init(dc_function_e function, DcMotor *motor, pid_s *pidParameters, const ValueProvider3D* pedalMap, bool initializeThrottles = true) = 0;
+	virtual void reset() = 0;
+	virtual void setIdlePosition(percent_t pos) = 0;
+	virtual void setWastegatePosition(percent_t pos) = 0;
+	virtual void update() = 0;
+	virtual void autoCalibrateTps() = 0;
+	virtual bool isEtbMode() const = 0;
+
+	virtual const pid_state_s& getPidState() const = 0;
+  virtual float getCurrentTarget() const = 0;
+	virtual void setLuaAdjustment(percent_t adjustment) = 0;
+};

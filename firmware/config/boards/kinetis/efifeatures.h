@@ -7,12 +7,15 @@
  * @author Andrey Belomutskiy, (c) 2012-2020
  */
 
-#ifndef EFIFEATURES_H_
-#define EFIFEATURES_H_
+#pragma once
 
 #define EFI_GPIO_HARDWARE TRUE
 
-#define EFI_FSIO FALSE
+#define EFI_BOOST_CONTROL FALSE
+
+#define EFI_LAUNCH_CONTROL FALSE
+
+#define EFI_MC33816 FALSE
 
 #define EFI_CDM_INTEGRATION FALSE
 
@@ -20,12 +23,11 @@
 
 #define EFI_PWM_TESTER FALSE
 
-#define HAL_USE_USB_MSD FALSE
+#define EFI_HPFP FALSE
 
-#define EFI_ENABLE_CRITICAL_ENGINE_STOP FALSE
-#define EFI_ENABLE_ENGINE_WARNING TRUE
+#define ATOFF_BUFFER_SIZE 4
 
-#define EFI_USE_CCM FALSE
+#define ATOFF_BUFFER_SIZE 4
 
 /**
  * if you have a 60-2 trigger, or if you just want better performance, you
@@ -39,18 +41,9 @@
  #define EFI_ENABLE_ASSERTS FALSE
 #endif /* EFI_ENABLE_ASSERTS */
 
-#if !defined(EFI_ENABLE_MOCK_ADC) || defined(__DOXYGEN__)
- #define EFI_ENABLE_MOCK_ADC FALSE
-#endif /* EFI_ENABLE_MOCK_ADC */
-
-
-#define EFI_TEXT_LOGGING TRUE
+#define EFI_TEXT_LOGGING FALSE
 
 //#define EFI_UART_ECHO_TEST_MODE FALSE
-
-//#define EFI_USE_UART_FOR_CONSOLE FALSE
-
-#define EFI_CONSOLE_NO_THREAD TRUE
 
 /**
  * Build-in logic analyzer support. Logic analyzer viewer is one of the java console panes.
@@ -59,16 +52,10 @@
 #define EFI_LOGIC_ANALYZER FALSE
 #endif
 
-#ifndef EFI_ICU_INPUTS
-#define EFI_ICU_INPUTS FALSE
-#endif
-
 /**
  * TunerStudio support.
  */
-#define EFI_TUNER_STUDIO TRUE
-
-#define EFI_NO_CONFIG_WORKING_COPY TRUE
+#define EFI_TUNER_STUDIO FALSE
 
 /**
  * Bluetooth UART setup support.
@@ -91,11 +78,10 @@
 
 #define EFI_ALTERNATOR_CONTROL FALSE
 
-#define EFI_AUX_PID FALSE
+#define EFI_VVT_PID FALSE
 
 #define EFI_SIGNAL_EXECUTOR_SLEEP FALSE
 #define EFI_SIGNAL_EXECUTOR_ONE_TIMER TRUE
-#define EFI_SIGNAL_EXECUTOR_HW_TIMER FALSE
 
 #define FUEL_MATH_EXTREME_LOGGING FALSE
 
@@ -103,7 +89,7 @@
 
 #define TRIGGER_EXTREME_LOGGING FALSE
 
-#define EFI_INTERNAL_FLASH TRUE
+#define EFI_STORAGE_INT_FLASH TRUE
 
 /**
  * Usually you need shaft position input, but maybe you do not need it?
@@ -140,17 +126,17 @@
 #define EFI_CJ125 FALSE
 #endif
 
-#if !defined(EFI_MEMS) || defined(__DOXYGEN__)
- #define EFI_MEMS FALSE
+#if !defined(EFI_ONBOARD_MEMS) || defined(__DOXYGEN__)
+ #define EFI_ONBOARD_MEMS FALSE
 #endif
 
 #ifndef EFI_INTERNAL_ADC
 #define EFI_INTERNAL_ADC TRUE
 #endif
 
-#define EFI_NARROW_EGO_AVERAGING FALSE
+#define EFI_USE_FAST_ADC TRUE
 
-#define EFI_DENSO_ADC FALSE
+#define EFI_NARROW_EGO_AVERAGING FALSE
 
 #ifndef EFI_CAN_SUPPORT
 #define EFI_CAN_SUPPORT FALSE
@@ -160,7 +146,7 @@
 #define EFI_LCD FALSE
 
 #ifndef EFI_IDLE_CONTROL
-#define EFI_IDLE_CONTROL TRUE
+#define EFI_IDLE_CONTROL FALSE
 #endif
 
 #define EFI_IDLE_PID_CIC FALSE
@@ -168,17 +154,15 @@
 /**
  * Control the main power relay based on measured ignition voltage (Vbatt)
  */
-#define EFI_MAIN_RELAY_CONTROL TRUE
-
-#ifndef EFI_PWM
-#define EFI_PWM FALSE
-#endif
+#define EFI_MAIN_RELAY_CONTROL FALSE
 
 #ifndef EFI_VEHICLE_SPEED
 #define EFI_VEHICLE_SPEED FALSE
 #endif
 
-#define EFI_FUEL_PUMP FALSE
+#ifndef EFI_TCU
+#define EFI_TCU FALSE
+#endif
 
 #ifndef EFI_ENGINE_EMULATOR
 #define EFI_ENGINE_EMULATOR FALSE
@@ -187,12 +171,6 @@
 #ifndef EFI_EMULATE_POSITION_SENSORS
 #define EFI_EMULATE_POSITION_SENSORS FALSE
 #endif
-
-/**
- * This macros is used to hide pieces of the code from unit tests, so it only makes sense in folders exposed to the tests project.
- * This macros is NOT about taking out logging in general.
- */
-#define EFI_PROD_CODE TRUE
 
 /**
  * Do we need file logging (like SD card) logic?
@@ -204,11 +182,6 @@
 #ifndef EFI_USB_SERIAL
 #define EFI_USB_SERIAL FALSE
 #endif
-
-/**
- * Should PnP engine configurations be included in the binary?
- */
-#define EFI_INCLUDE_ENGINE_PRESETS FALSE
 
 #ifndef EFI_ENGINE_SNIFFER
 #define EFI_ENGINE_SNIFFER FALSE
@@ -223,8 +196,6 @@
  * Do we need GPS logic?
  */
 #define EFI_UART_GPS FALSE
-
-#define EFI_SERVO FALSE
 
 #define EFI_ELECTRONIC_THROTTLE_BODY FALSE
 //#define EFI_ELECTRONIC_THROTTLE_BODY FALSE
@@ -245,22 +216,17 @@
 
 // todo: most of this should become configurable
 
-// todo: switch to continues ADC conversion for slow ADC?
-// https://github.com/rusefi/rusefi/issues/630
 // todo: switch to continues ADC conversion for fast ADC?
-#define EFI_INTERNAL_FAST_ADC_PWM	&PWMD2
+#define EFI_INTERNAL_FAST_ADC_GPT	&GPTD2
 
 // todo: why 64 SPLL prescaler doesn't work?
 // 168000000/64/128/1025 = ~20Hz
 // 168000000/64/16/16 = ~10.25kHz
 
 // todo: warning! these numbers are "tricky"! need to investigate further!
-//168000000/128/65535 = ~20Hz
-#define PWM_FREQ_SLOW 20507   /* PWM clock frequency. */
-#define PWM_PERIOD_SLOW 65535  /* PWM period (in PWM ticks).    */
 //168000000/128/131 = ~10kHz
-#define PWM_FREQ_FAST 20507/*164062*/  /* PWM clock frequency. */
-#define PWM_PERIOD_FAST 131   /* PWM period (in PWM ticks).    */
+#define GPT_FREQ_FAST 20507/*164062*/  /* PWM clock frequency. */
+#define GPT_PERIOD_FAST 131   /* PWM period (in PWM ticks).    */
 
 #define EFI_SPI1_AF 3
 
@@ -271,11 +237,6 @@
  */
 
 #define EFI_SPI3_AF 3
-
-#define EFI_I2C_SCL_BRAIN_PIN GPIOB_6
-
-#define EFI_I2C_SDA_BRAIN_PIN GPIOB_7
-#define EFI_I2C_AF 4
 
 /**
  * Patched version of ChibiOS/RT support extra details in the system error messages
@@ -292,19 +253,12 @@
  *  STM32_UART_USE_USARTx
  * in mcuconf.h
  */
-#define TS_UART_DMA_MODE FALSE
-#define TS_UART_MODE TRUE
+#define EFI_USE_UART_DMA FALSE
 
-#define TS_UART_DEVICE (&UARTD2)
-#undef TS_SERIAL_DEVICE
+#define TS_PRIMARY_UxART_PORT UARTD2
 
-#undef EFI_CONSOLE_SERIAL_DEVICE
-#define EFI_CONSOLE_UART_DEVICE (&UARTD1)
-
-#define EFI_CONSOLE_TX_PORT GPIOA
-#define EFI_CONSOLE_TX_PIN 10
-#define EFI_CONSOLE_RX_PORT GPIOA
-#define EFI_CONSOLE_RX_PIN 11
+#define EFI_CONSOLE_TX_BRAIN_PIN Gpio::A10
+#define EFI_CONSOLE_RX_BRAIN_PIN Gpio::A11
 #define EFI_CONSOLE_AF 3
 
 #define TS_SERIAL_AF 2
@@ -320,32 +274,29 @@
 //#define EFI_TRIGGER_DEBUG_BLINK TRUE
 //#define EFI_TRIGGER_COMP_ADAPTIVE_HYSTERESIS TRUE
 
-#define LED_WARNING_BRAIN_PIN GPIOD_13
+#define LED_WARNING_BRAIN_PIN Gpio::D13
 
-#define LED_ERROR_BRAIN_PIN GPIOD_14
+#define LED_CRITICAL_ERROR_BRAIN_PIN Gpio::D14
+#define LED_ERROR_BRAIN_PIN_MODE DEFAULT_OUTPUT
 
 #define EFI_WARNING_LED FALSE
-
-#define EFI_UNIT_TEST FALSE
-
-#undef CONSOLE_MODE_SWITCH_PORT
-#undef CONFIG_RESET_SWITCH_PORT
 
 /**
  * This is the size of the MemoryStream used by chvprintf
  */
-#define INTERMEDIATE_LOGGING_BUFFER_SIZE 200 /*2000*/
-#define STATUS_LOGGING_BUFFER_SIZE 120 /*1800*/
-#define SETTINGS_LOGGING_BUFFER_SIZE 100 /*1000*/
+#define LOGIC_ANALYZER_BUFFER_SIZE 10 /*1800*/
 #define DL_OUTPUT_BUFFER 10 /*6500*/
 
-#define UTILITY_THREAD_STACK_SIZE 270 /*400*/
+#define UTILITY_THREAD_STACK_SIZE 20 /*400*/
 
 //#define CONSOLE_THREAD_STACK_SIZE UTILITY_THREAD_STACK_SIZE
 
-#define BOARD_TLE6240_COUNT 1
+#define BOARD_TLE6240_COUNT 0
 #define BOARD_MC33972_COUNT 0
 #define BOARD_TLE8888_COUNT 0
+#define BOARD_DRV8860_COUNT 0
+#define BOARD_MC33810_COUNT 0
+#define BOARD_L9779_COUNT 0
 
 #define TLE6240_SS_PORT GPIOB
 #define TLE6240_SS_PAD  0U
@@ -364,9 +315,6 @@
 		[7] = {.port = NULL, .pad = 0},
 
 #define EFI_BOSCH_YAW FALSE
-#define ADC_SNIFFER FALSE
-
-#define GPTDEVICE GPTD1
 
 #define EFI_BOARD_TEST FALSE
 #define EFI_JOYSTICK FALSE
@@ -376,16 +324,18 @@
 #define EFI_UART_ECHO_TEST_MODE FALSE
 #define EXTREME_TERM_LOGGING FALSE
 #define EFI_PRINTF_FUEL_DETAILS FALSE
-
-#define EFI_SIMULATOR FALSE
+#define ENABLE_PERF_TRACE FALSE
 
 #define RAM_UNUSED_SIZE 1
 #define CCM_UNUSED_SIZE 1
 
-#define EFI_PRINT_ERRORS_AS_WARNINGS TRUE
-#define EFI_PRINT_MESSAGES_TO_TERMINAL TRUE
+#define EFI_BACKUP_SRAM FALSE
 
-#define EFI_ACTIVE_CONFIGURATION_IN_FLASH
+#define EFI_PRINT_ERRORS_AS_WARNINGS TRUE
+// #define EFI_PRINT_MESSAGES_TO_TERMINAL TRUE
+
+#undef EFI_ACTIVE_CONFIGURATION_IN_FLASH
+#define EFI_ACTIVE_CONFIGURATION_IN_FLASH TRUE
 
 //#define PWM_PHASE_MAX_COUNT 122
 
@@ -395,9 +345,6 @@
 	if (__debugEnabled) { \
 		extern char __debugBuffer[80]; \
 		chsnprintf(__debugBuffer, sizeof(__debugBuffer), fmt, ##__VA_ARGS__); \
-		uart_lld_blocking_send(EFI_CONSOLE_UART_DEVICE, strlen(__debugBuffer), (void *)__debugBuffer); \
+		uart_lld_blocking_send(TS_PRIMARY_UxART_PORT, strlen(__debugBuffer), (void *)__debugBuffer); \
 	} \
 }
-
-
-#endif /* EFIFEATURES_H_ */

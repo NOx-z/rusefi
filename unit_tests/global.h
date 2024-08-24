@@ -13,25 +13,25 @@
 #include <time.h>
 
 #include "common_headers.h"
+#include "test_executor.h"
+
+#define EFU_UNIT_TESTS fail("typo please EFU_UNIT_TEST");
 
 typedef uint32_t iomode_t;
 typedef uint32_t ioportid_t;
 typedef uint32_t ioportmask_t;
 
+#define DL_OUTPUT_BUFFER 200
+
 // just a stub implementation for unit tests
-#define EXPECTED_REMAINING_STACK 1
 #define getCurrentRemainingStack() (999999)
 
-// this is needed by all DECLARE_ENGINE_PARAMETER_* usages
-#include "engine_configuration_generated_structures.h"
-
-#ifdef __cplusplus
-// this is needed by all DECLARE_ENGINE_PARAMETER_* usages
-class Engine;
-#endif /* __cplusplus */
+#define EXPECT_NEAR_M3(x, y) EXPECT_NEAR((x), (y), 1e-3)
+#define EXPECT_NEAR_M4(a, b) EXPECT_NEAR(a, b, 1e-4)
 
 
 #ifdef __cplusplus
+#include "mock-threads.h"
 // todo: include it right here? #include "unit_test_framework.h"
 extern "C"
 {
@@ -45,8 +45,6 @@ typedef uint32_t systime_t;
 
 void chDbgAssert(int c, char *msg, void *arg);
 
-void print(const char *fmt, ...);
-
 #define TICKS_IN_MS 100
 
 #define chDbgCheck(x, y) chDbgAssert(x, y, NULL)
@@ -55,48 +53,24 @@ void print(const char *fmt, ...);
 }
 #endif /* __cplusplus */
 
-
-#define US_TO_NT_MULTIPLIER 100
-#define VCS_VERSION "321"
 #define RUS_EFI_VERSION_TAG "rusEfiVersion"
-
-#define ALWAYS_INLINE INLINE
-
-#define US2NT(x) (US_TO_NT_MULTIPLIER * (x))
-
-#define NT2US(x) ((x) / US_TO_NT_MULTIPLIER)
-
-#define INLINE inline
 
 #define EFI_ERROR_CODE 0xffffffff
 
 #define CCM_OPTIONAL
 
-#define EXTERN_ENGINE extern EnginePins enginePins; \
-	 extern engine_configuration_s & activeConfiguration
+#define chSysLock() {}
+#define chSysUnlock() {}
+#define osalThreadDequeueNextI(x, y) {}
 
-#define EXTERN_CONFIG
+#ifdef __cplusplus
+namespace chibios_rt {
+	// Noop for unit tests - this does real lock in FW/sim
+	class CriticalSectionLocker { };
+}
+#endif
 
-#define DEFINE_CONFIG_PARAM(x, y) , x y
-#define PASS_CONFIG_PARAM(x) , x
+#define UNIT_TEST_BUSY_WAIT_CALLBACK() { advanceTimeUs(1); }
 
-/**
- * this macro provides references to engine from EngineTestHelper
- */
-#define EXPAND_EngineTestHelper \
-	    Engine *engine = &eth.engine; \
-		EXPAND_Engine
-
-#define WITH_ENGINE_TEST_HELPER_SENS(x, sensorvals) \
-	EngineTestHelper eth(x, sensorvals); \
-	EXPAND_EngineTestHelper;
-
-#define WITH_ENGINE_TEST_HELPER(x) \
-	EngineTestHelper eth(x, std::unordered_map<SensorType, float>{}); \
-	EXPAND_EngineTestHelper;
-
-#define CONFIG_PARAM(x) (x)
-
-#define lockAnyContext() false
-
-#define unlockAnyContext() {}
+#define chsnprintf snprintf
+#define chvsnprintf vsnprintf

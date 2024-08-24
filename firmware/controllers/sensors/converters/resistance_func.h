@@ -12,13 +12,14 @@
 
 class ResistanceFunc final : public SensorConverter {
 public:
-	void configure(float supplyVoltage, float pullupResistor);
+	void configure(float supplyVoltage, float pullupResistor, bool isPulldown);
 
 	SensorResult convert(float inputValue) const override;
 
-	void showInfo(Logging* logger, float testInputValue) const override;
+	void showInfo(float testInputValue) const override;
 
 private:
 	float m_supplyVoltage = 5.0f;
 	float m_pullupResistor = 1000.0f;
+	bool m_isPulldown = false;
 };

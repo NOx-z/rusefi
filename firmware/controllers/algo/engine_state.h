@@ -10,68 +10,62 @@
 
 #include "global.h"
 #include "engine_parts.h"
-#include "pid.h"
 #include "engine_state_generated.h"
 
-#define BRAIN_PIN_COUNT (1 << sizeof(brain_pin_e))
-
-class EngineState : public engine_state2_s {
+class EngineState : public engine_state_s {
 public:
 	EngineState();
-	void periodicFastCallback(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-	void updateSlowSensors(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-	void updateTChargeK(int rpm, float tps DECLARE_ENGINE_PARAMETER_SUFFIX);
+	void periodicFastCallback();
+	void updateSlowSensors();
+	void updateTChargeK(int rpm, float tps);
 
-#if ! EFI_PROD_CODE
-	bool mockPinStates[BRAIN_PIN_COUNT];
-#endif
+	void updateSparkSkip();
 
-	FuelConsumptionState fuelConsumption;
+	/**
+	 * always 360 or 720, never zero
+	 */
+	angle_t engineCycle;
 
-	efitick_t crankingTime = 0;
-	efitick_t timeSinceCranking = 0;
+	/**
+	 * this is based on sensorChartMode and sensorSnifferRpmThreshold settings
+	 */
+	sensor_chart_e sensorChartMode = SC_OFF;
+
+	// Per-injection fuel mass, including TPS accel enrich
+	float injectionMass[MAX_CYLINDER_COUNT] = {0};
+  // todo: move to .txt or even better extract injection.txt?
+	float stftCorrection[STFT_BANK_COUNT] = {0};
+
+	float injectionStage2Fraction = 0;
+
+	Timer crankingTimer;
 
 	WarningCodeState warnings;
 
-	/**
-	 * speed-density logic, calculated air flow in kg/h for tCharge Air-Interp. method
-	 */
-	float airFlow = 0;
-
-	float engineNoiseHipLevel = 0;
+	// Estimated airflow based on whatever airmass model is active
+	float airflowEstimate = 0;
 
 	float auxValveStart = 0;
 	float auxValveEnd = 0;
 
-	// too much copy-paste here, something should be improved :)
-	ThermistorMath iatCurve;
-	ThermistorMath cltCurve;
-
 	/**
-	 * MAP averaging angle start, in relation to 'mapAveragingSchedulingAtIndex' trigger index index
+	 * MAP averaging angle start, in relation to '0' trigger index index
 	 */
-	angle_t mapAveragingStart[INJECTION_PIN_COUNT];
+	angle_t mapAveragingStart[MAX_CYLINDER_COUNT];
 	angle_t mapAveragingDuration = 0;
 
 	/**
 	 * timing advance is angle distance before Top Dead Center (TDP), i.e. "10 degree timing advance" means "happens 10 degrees before TDC"
 	 */
-	angle_t timingAdvance = 0;
-	// fuel-related;
-	float fuelCutoffCorrection = 0;
-	efitick_t coastingFuelCutStartTime = 0;
+	angle_t timingAdvance[MAX_CYLINDER_COUNT] = {0};
 
-	efitick_t timeSinceLastTChargeK;
+	// Angle between firing the main (primary) spark and the secondary (trailing) spark
+	angle_t trailingSparkAngle = 0;
 
-	float currentRawVE = 0;
+	Timer timeSinceLastTChargeK;
 
-	int vssEventCounter = 0;
+	float currentVe = 0;
 
-
-	/**
-	 * pre-calculated value from simple fuel lookup
-	 */
-	floatms_t baseTableFuel = 0;
 	/**
 	 * Raw fuel injection duration produced by current fuel algorithm, without any correction
 	 */
@@ -82,11 +76,22 @@ public:
 	 */
 	floatms_t tpsAccelEnrich = 0;
 
+	/**
+	 * Each individual fuel injection duration for current engine cycle, without wall wetting
+	 * including everything including injector lag, both cranking and running
+	 * @see getInjectionDuration()
+	 */
+	floatms_t injectionDuration = 0;
+	floatms_t injectionDurationStage2 = 0;
+
 	angle_t injectionOffset = 0;
 
-#if EFI_ENABLE_MOCK_ADC
-	MockAdcState mockAdcState;
-#endif /* EFI_ENABLE_MOCK_ADC */
-
 	multispark_state multispark;
+
+	bool shouldUpdateInjectionTiming = true;
 };
+
+EngineState * getEngineState();
+
+bool getClutchDownState();
+bool getBrakePedalState();

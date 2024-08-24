@@ -8,6 +8,7 @@
 #pragma once
 
 #include "global.h"
+#include "tunerstudio_outputs.h"
 
 class CdmState {
 public:
@@ -30,7 +31,6 @@ public:
 };
 
 #if EFI_TUNER_STUDIO
-#include "tunerstudio_configuration.h"
 void ionPostState(TunerStudioOutputChannels *tsOutputChannels);
 #endif
 

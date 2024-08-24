@@ -3,7 +3,7 @@
  * @brief Initialization code and main status reporting look
  *
  * @date Dec 25, 2013
- * @author Andrey Belomutskiy, (c) 2012-2020
+ * @author Andrey Belomutskiy, (c) 2012-2021
  */
 
 /**
@@ -12,9 +12,9 @@
  *
  * For version see engine_controller.cpp getRusEfiVersion
  *
- * @section sec_into
+ * @section sec_intro Intro
  *
- * rusEfi is implemented based on the idea that with modern 100+ MHz microprocessors the relatively
+ * rusEFI is implemented based on the idea that with modern 100+ MHz microprocessors the relatively
  * undemanding task of internal combustion engine control could be implemented in a high-level, processor-independent
  * (to some extent) manner. Thus the key concepts of rusEfi: dependency on high-level hardware abstraction layer, software-based PWM etc.
  *
@@ -49,12 +49,12 @@
  *
  *
  * @section sec_timers Timers
- * At the moment rusEfi is build using 5 times:
- * 1) 1MHz microsecond_timer.cpp
- * 2) 10KHz fast ADC callback pwmpcb_fast adc_inputs.cpp
- * 3) slow ADC callback pwmpcb_slow adc_inputs.cpp
- * 4) periodicFastTimer engine_controller.cpp
- * 5) periodicSlowTimer engine_controller.cpp
+ * At the moment rusEfi is build using 5 timers:
+ * <BR>1) 1MHz microsecond_timer.cpp
+ * <BR>2) 10KHz fast ADC callback pwmpcb_fast adc_inputs.cpp
+ * <BR>3) slow ADC callback pwmpcb_slow adc_inputs.cpp
+ * <BR>4) periodicFastTimer engine_controller.cpp
+ * <BR>5) periodicSlowTimer engine_controller.cpp
  *
  *
  *
@@ -72,44 +72,53 @@
  * at 700 degrees, we need to charge the ignition coil, for example this dwell time is 4ms - that
  * means we need to turn on the coil at '4 ms before 700 degrees'. Let's  assume that the engine is
  * current at 600 RPM - that means 360 degrees would take 100ms so 4ms is 14.4 degrees at current RPM which
- * means we need to start charting the coil at 685.6 degrees.
+ * means we need to start charging the coil at 685.6 degrees.
  *
  * The position sensors at our disposal are not providing us the current position at any moment of time -
  * all we've got is a set of events which are happening at the knows positions. For instance, let's assume that
  * our sensor sends as an event at 0 degrees, at 90 degrees, at 600 degrees and and 690 degrees.
  *
- * So, for this particular sensor the most precise scheduling would be possible if we schedule coil charting
+ * So, for this particular sensor the most precise scheduling would be possible if we schedule coil charging
  * as '85.6 degrees after the 600 degrees position sensor event', and spark firing as
  * '10 degrees after the 690 position sensor event'. Considering current RPM, we calculate that '10 degress after' is
  * 2.777ms, so we schedule spark firing at '2.777ms after the 690 position sensor event', thus combining trigger events
  * with time-based offset.
  *
- * @section config Persistent Configuration
- * engine_configuration_s structure is kept in the internal flash memory, it has all the settings. Currently rusefi.ini has a direct mapping of this structure.
+ * @section tunerstudio Getting Data To and From Tunerstudio
  *
- * Please note that due to TunerStudio protocol it's important to have the total structure size in synch between the firmware and TS .ini file -
+ * Contains the enum with values to be output to Tunerstudio.
+ * console/binary/output_channels.txt
+ *
+ * [Changing gauge limits](http://www.tunerstudio.com/index.php/manuals/63-changing-gauge-limits)
+ *
+ * Definition of the Tunerstudio configuration interface, gauges, and indicators
+ * tunerstudio/tunerstudio.template.ini
+ *
+ * @section config Persistent Configuration
+ *
+ * Definition of configuration data structure:
+ * integration/rusefi_config.txt
+ * This file has a lot of information and instructions in its comment header.
+ * Please note that due to TunerStudio protocol it's important to have the total structure size in sync between the firmware and TS .ini file -
  * just to make sure that this is not forgotten the size of the structure is hard-coded as PAGE_0_SIZE constant. There is always some 'unused' fields added in advance so that
  * one can add some fields without the pain of increasing the total configuration page size.
  * <br>See flash_main.cpp
  *
- *
  * @section sec_fuel_injection Fuel Injection
  *
  *
- * @sectuion sec_misc Misc
+ * @section sec_misc Misc
  *
  * <BR>See main_trigger_callback.cpp for main trigger event handler
  * <BR>See fuel_math.cpp for details on fuel amount logic
- * <BR>See rpm_calculator.cpp for details on how getRpm() is calculated
+ * <BR>See rpm_calculator.cpp for details on how RPM is calculated
  *
  */
 
-#include "global.h"
-#include "os_access.h"
+#include "pch.h"
+
 #include "trigger_structure.h"
 #include "hardware.h"
-#include "engine_controller.h"
-#include "efi_gpio.h"
 
 #include "rfi_perftest.h"
 #include "rusefi.h"
@@ -117,21 +126,19 @@
 
 #include "eficonsole.h"
 #include "status_loop.h"
-#include "pin_repository.h"
-#include "flash_main.h"
 #include "custom_engine.h"
-#include "engine_math.h"
 #include "mpu_util.h"
+#include "tunerstudio.h"
+#include "mmc_card.h"
+#include "mass_storage_init.h"
+#include "trigger_emulator_algo.h"
+#include "rusefi_lua.h"
 
-#if EFI_HD44780_LCD
-#include "lcd_HD44780.h"
-#endif /* EFI_HD44780_LCD */
+#include <setjmp.h>
 
 #if EFI_ENGINE_EMULATOR
 #include "engine_emulator.h"
 #endif /* EFI_ENGINE_EMULATOR */
-
-LoggingWithStorage sharedLogger("main");
 
 bool main_loop_started = false;
 
@@ -139,10 +146,8 @@ static char panicMessage[200];
 
 static virtual_timer_t resetTimer;
 
-EXTERN_ENGINE;
-
 // todo: move this into a hw-specific file
-void rebootNow(void) {
+void rebootNow() {
 	NVIC_SystemReset();
 }
 
@@ -150,97 +155,147 @@ void rebootNow(void) {
  * Some configuration changes require full firmware reset.
  * Once day we will write graceful shutdown, but that would be one day.
  */
-static void scheduleReboot(void) {
-	scheduleMsg(&sharedLogger, "Rebooting in 3 seconds...");
-	lockAnyContext();
+void scheduleReboot() {
+	efiPrintf("Rebooting in 3 seconds...");
+	chibios_rt::CriticalSectionLocker csl;
 	chVTSetI(&resetTimer, TIME_MS2I(3000), (vtfunc_t) rebootNow, NULL);
-	unlockAnyContext();
 }
 
-void runRusEfi(void) {
-	initErrorHandlingDataStructures();
-	efiAssertVoid(CUSTOM_RM_STACK_1, getCurrentRemainingStack() > 512, "init s");
-	assertEngineReference();
-	engine->setConfig(config);
-	initIntermediateLoggingBuffer();
-	addConsoleAction(CMD_REBOOT, scheduleReboot);
-	addConsoleAction(CMD_REBOOT_DFU, jump_to_bootloader);
+static jmp_buf jmpEnv;
+void onAssertionFailure() {
+	// There's been an assertion failure: instead of hanging, jump back to where we check
+	// if (setjmp(jmpEnv)) (see below for more complete explanation)
+	longjmp(jmpEnv, 1);
+}
 
-#if EFI_SHAFT_POSITION_INPUT
-	/**
-	 * This is so early because we want to init logger
-	 * which would be used while finding trigger sync index
-	 * while reading configuration
-	 */
-	initTriggerDecoderLogger(&sharedLogger);
-#endif /* EFI_SHAFT_POSITION_INPUT */
+void runRusEfiWithConfig();
+__NO_RETURN void runMainLoop();
+
+void runRusEfi() {
+	engine->setConfig();
+
+#if EFI_TEXT_LOGGING
+	// Initialize logging system early - we can't log until this is called
+	startLoggingProcessor();
+#endif
+
+#if EFI_PROD_CODE
+	checkLastBootError();
+#endif
+
+#if defined(STM32F4) || defined(STM32F7)
+//	addConsoleAction("stm32_stop", stm32_stop);
+	addConsoleAction("stm32_standby", stm32_standby);
+#endif
+
+	addConsoleAction(CMD_REBOOT, scheduleReboot);
+#if EFI_DFU_JUMP
+	addConsoleAction(CMD_REBOOT_DFU, jump_to_bootloader);
+#endif /* EFI_DFU_JUMP */
+
+#if EFI_USE_OPENBLT
+	addConsoleAction(CMD_REBOOT_OPENBLT, jump_to_openblt);
+#endif
 
 	/**
 	 * we need to initialize table objects before default configuration can set values
 	 */
-	initDataStructures(PASS_ENGINE_PARAMETER_SIGNATURE);
+	initDataStructures();
 
-	/**
-	 * First data structure keeps track of which hardware I/O pins are used by whom
-	 */
-	initPinRepository();
+	// Perform hardware initialization that doesn't need configuration
+	initHardwareNoConfig();
 
-#if EFI_INTERNAL_FLASH
-	/**
-	 * First thing is reading configuration from flash memory.
-	 * In order to have complete flexibility configuration has to go before anything else.
-	 */
-	readConfiguration(&sharedLogger);
-#endif /* EFI_INTERNAL_FLASH */
-#ifndef EFI_ACTIVE_CONFIGURATION_IN_FLASH
-	// TODO: need to fix this place!!! should be a version of PASS_ENGINE_PARAMETER_SIGNATURE somehow
-	prepareVoidConfiguration(&activeConfiguration);
-#endif /* EFI_ACTIVE_CONFIGURATION_IN_FLASH */
+  // at the moment that's always hellen board ID
+	detectBoardType();
+
+#if EFI_ETHERNET
+	startEthernetConsole();
+#endif
+
+#if EFI_USB_SERIAL
+	startUsbConsole();
+#endif
+
+#if HAL_USE_USB_MSD
+	initUsbMsd();
+#endif
 
 	/**
 	 * Next we should initialize serial port console, it's important to know what's going on
 	 */
-	initializeConsole(&sharedLogger);
+	initializeConsole();
 
-	/**
-	 * Initialize hardware drivers
-	 */
-	initHardware(&sharedLogger);
+	checkLastResetCause();
 
-	initStatusLoop();
-	/**
-	 * Now let's initialize actual engine control logic
-	 * todo: should we initialize some? most? controllers before hardware?
-	 */
-	initEngineContoller(&sharedLogger PASS_ENGINE_PARAMETER_SIGNATURE);
-	rememberCurrentConfiguration();
+	// Read configuration from flash memory
+	loadConfiguration();
 
-#if EFI_PERF_METRICS
-	initTimePerfActions(&sharedLogger);
+#if EFI_TUNER_STUDIO
+	startTunerStudioConnectivity();
+#endif /* EFI_TUNER_STUDIO */
+
+	// Start hardware serial ports (including bluetooth, if present)
+#if EFI_TUNER_STUDIO
+	startSerialChannels();
+#endif // EFI_TUNER_STUDIO
+
+	runRusEfiWithConfig();
+
+	// periodic events need to be initialized after fuel&spark pins to avoid a warning
+	initPeriodicEvents();
+
+	runMainLoop();
+}
+
+void runRusEfiWithConfig() {
+	// If some config operation caused an OS assertion failure, return immediately
+	// This sets the "unwind point" that we can jump back to later with longjmp if we have
+	// an assertion failure. If that happens, setjmp() will return non-zero, so we will
+	// return immediately from this function instead of trying to init hardware again (which failed last time)
+	if (setjmp(jmpEnv)) {
+		return;
+	}
+
+	commonEarlyInit();
+
+#if EFI_WIFI
+	startWifiConsole();
 #endif
-        
-#if EFI_ENGINE_EMULATOR
-	initEngineEmulator(&sharedLogger PASS_ENGINE_PARAMETER_SIGNATURE);
-#endif
-	startStatusThreads();
 
-	runSchedulingPrecisionTestIfNeeded();
+	// Config could be completely bogus - don't start anything else!
+	if (validateConfigOnStartUpOrBurn()) {
+		/**
+		 * Now let's initialize actual engine control logic
+		 * todo: should we initialize some? most? controllers before hardware?
+		 */
+		initRealHardwareEngineController();
 
-	print("Running main loop\r\n");
+
+		// This has to happen after RegisteredOutputPins are init'd: otherwise no change will be detected, and no init will happen
+		rememberCurrentConfiguration();
+
+	#if EFI_PERF_METRICS
+		initTimePerfActions();
+	#endif
+
+	}
+}
+
+void runMainLoop() {
+	efiPrintf("Running main loop");
 	main_loop_started = true;
 	/**
 	 * This loop is the closes we have to 'main loop' - but here we only publish the status. The main logic of engine
 	 * control is around main_trigger_callback
 	 */
 	while (true) {
-		efiAssertVoid(CUSTOM_RM_STACK, getCurrentRemainingStack() > 128, "stack#1");
-
 #if EFI_CLI_SUPPORT && !EFI_UART_ECHO_TEST_MODE
 		// sensor state + all pending messages for our own rusEfi console
+		// todo: is this mostly dead code?
 		updateDevConsoleState();
 #endif /* EFI_CLI_SUPPORT */
 
-		chThdSleepMilliseconds(CONFIG(consoleLoopPeriodMs));
+		chThdSleepMilliseconds(200);
 	}
 }
 
@@ -263,5 +318,3 @@ void chDbgStackOverflowPanic(thread_t *otp) {
 #endif
 	chDbgPanic3(panicMessage, __FILE__, __LINE__);
 }
-
-

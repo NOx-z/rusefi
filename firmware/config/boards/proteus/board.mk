@@ -1,26 +1,70 @@
 # List of all the board related files.
-BOARDSRC = $(CHIBIOS)/os/hal/boards/ST_NUCLEO144_F767ZI/board.c
-BOARDSRC_CPP =  $(PROJECT_DIR)/config/boards/proteus/board_configuration.cpp \
-				$(PROJECT_DIR)/config/boards/proteus/adc_hack.cpp
+BOARDCPPSRC =  $(BOARD_DIR)/board_configuration.cpp
 
-# Target processor details
 ifeq ($(PROJECT_CPU),ARCH_STM32F4)
-  MCU_DEFS = -DSTM32F407xx
-  BOARDSRC = $(CHIBIOS)/os/hal/boards/ST_STM32F4_DISCOVERY/board.c
-  BOARDINC = $(BOARDS_DIR)/microrusefi
-  BOARDINC += $(PROJECT_DIR)/config/stm32f4ems	# For board.h
-  BOARDINC += $(BOARDS_DIR)/st_stm32f4
-  LDSCRIPT= $(BOARDS_DIR)/prometheus/STM32F405xG.ld
-else
-  MCU_DEFS = -DSTM32F767xx
-  BOARDSRC = $(CHIBIOS)/os/hal/boards/ST_NUCLEO144_F767ZI/board.c
-  BOARDINC = $(BOARDS_DIR)/nucleo_f767		# For board.h
-  BOARDINC += $(PROJECT_DIR)/config/stm32f7ems	# efifeatures/halconf/chconf.h
-  LDSCRIPT= $(BOARDS_DIR)/nucleo_f767/STM32F76xxI.ld
+  IS_STM32F429 = yes
 endif
 
+# see also openblt/board.mk STATUS_LED
+DDEFS += -DLED_CRITICAL_ERROR_BRAIN_PIN=Gpio::E3
+DDEFS += -DFIRMWARE_ID=\"proteus\"
+DDEFS += $(VAR_DEF_ENGINE_TYPE)
 
+DDEFS += -DEFI_MAIN_RELAY_CONTROL=TRUE
+DDEFS += -DEFI_HD_ACR=TRUE
+DDEFS += -DEFI_MAX_31855=TRUE
+DDEFS += -DSTM32_SPI_USE_SPI5=TRUE
+DDEFS += -DEFI_TCU=TRUE
 
+# let's start asap
+DDEFS += -DBOOT_BACKDOOR_ENTRY_TIMEOUT_MS=0
 
-# Override DEFAULT_ENGINE_TYPE
-DDEFS += $(MCU_DEFS) -DEFI_USE_OSC=TRUE -DEFI_FATAL_ERROR_PIN=GPIOE_3 -DFIRMWARE_ID=\"proteus\" -DDEFAULT_ENGINE_TYPE=PROTEUS -DUSE_ADC3_VBATT_HACK -DSTM32_ADC_USE_ADC3=TRUE -DEFI_INCLUDE_ENGINE_PRESETS=FALSE
+# Any Proteus-based adapter boards with discrete-VR decoder are controlled via a 5v ignition output
+DDEFS += -DVR_SUPPLY_VOLTAGE=5
+
+# This stuff doesn't work on H7 yet
+ifneq ($(PROJECT_CPU),ARCH_STM32H7)
+	DDEFS += -DSTM32_ADC_USE_ADC3=TRUE
+	DDEFS += -DEFI_SOFTWARE_KNOCK=TRUE
+endif
+
+# serial ports only on F4
+ifeq ($(PROJECT_CPU),ARCH_STM32F4)
+	# Hardware serial port on UART 2 -> PD5/PD6
+	DDEFS += -DSTM32_UART_USE_USART2=TRUE
+	DDEFS += -DTS_PRIMARY_UxART_PORT=UARTD2
+	DDEFS += -DEFI_CONSOLE_TX_BRAIN_PIN=Gpio::D5 -DEFI_CONSOLE_RX_BRAIN_PIN=Gpio::D6
+endif
+
+# CAND1
+DDEFS += -DBOOT_COM_CAN_CHANNEL_INDEX=0
+DDEFS += -DOPENBLT_CAN_RX_PORT=GPIOD
+DDEFS += -DOPENBLT_CAN_RX_PIN=0
+DDEFS += -DOPENBLT_CAN_TX_PORT=GPIOD
+DDEFS += -DOPENBLT_CAN_TX_PIN=1
+
+# We are running on Proteus hardware!
+DDEFS += -DHW_PROTEUS=1
+
+ifeq ($(PROJECT_CPU),ARCH_STM32F7)
+  # todo: KNOCK_SPECTROGRAM to use big_buffer
+	DDEFS += -DKNOCK_SPECTROGRAM=TRUE
+	DDEFS += -DLUA_RX_MAX_FILTER_COUNT=96
+	DDEFS += -DSTATIC_BOARD_ID=STATIC_BOARD_ID_PROTEUS_F7
+
+	ifeq ($(EFI_LUA_LOOKUP),)
+    EFI_LUA_LOOKUP = TRUE
+  endif
+  DDEFS += -DEFI_LUA_LOOKUP=$(EFI_LUA_LOOKUP)
+
+	# note #define EFI_EMBED_INI_MSD FALSE in F7 features
+	ifeq ($(DEBUG_LEVEL_OPT),)
+		DEBUG_LEVEL_OPT = -Os -ggdb -g
+	endif
+else ifeq ($(PROJECT_CPU),ARCH_STM32F4)
+	DDEFS += -DSTATIC_BOARD_ID=STATIC_BOARD_ID_PROTEUS_F4
+else ifeq ($(PROJECT_CPU),ARCH_STM32H7)
+	DDEFS += -DSTATIC_BOARD_ID=STATIC_BOARD_ID_PROTEUS_H7
+else
+$(error Unsupported PROJECT_CPU [$(PROJECT_CPU)])
+endif

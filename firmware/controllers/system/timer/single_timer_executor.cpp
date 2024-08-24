@@ -20,140 +20,114 @@
  * @author Andrey Belomutskiy, (c) 2012-2020
  */
 
-#include "global.h"
-#include "os_access.h"
+#include "pch.h"
+
+
 #include "single_timer_executor.h"
 #include "efitime.h"
-#include "perf_trace.h"
 
 #if EFI_SIGNAL_EXECUTOR_ONE_TIMER
 
 #include "microsecond_timer.h"
-#include "tunerstudio_configuration.h"
 #include "os_util.h"
 
-#include "engine.h"
-EXTERN_ENGINE;
-
-extern schfunc_t globalTimerCallback;
-
-/**
- * these fields are global in order to facilitate debugging
- */
-static efitime_t nextEventTimeNt = 0;
-
 uint32_t hwSetTimerDuration;
-uint32_t lastExecutionCount;
 
-static void executorCallback(void *arg) {
-	(void)arg;
-	efiAssertVoid(CUSTOM_ERR_6624, getCurrentRemainingStack() > EXPECTED_REMAINING_STACK, "lowstck#2y");
-
-//	callbackTime = getTimeNowNt();
-//	if ((callbackTime > nextEventTimeNt) && (callbackTime - nextEventTimeNt > US2NT(5000))) {
-//		timerIsLate++;
-//	}
+void globalTimerCallback() {
+	efiAssertVoid(ObdCode::CUSTOM_ERR_6624, hasLotsOfRemainingStack(), "lowstck#2y");
 
 	___engine.executor.onTimerCallback();
 }
 
-SingleTimerExecutor::SingleTimerExecutor() {
-	reentrantFlag = false;
-	doExecuteCounter = scheduleCounter = timerCallbackCounter = 0;
-	/**
-	 * todo: a good comment
-	 */
-	queue.setLateDelay(US2NT(100));
+SingleTimerExecutor::SingleTimerExecutor()
+	// 8us is roughly the cost of the interrupt + overhead of a single timer event
+	: queue(US2NT(8))
+{
 }
 
-void SingleTimerExecutor::scheduleForLater(scheduling_s *scheduling, int delayUs, action_s action) {
-	scheduleByTimestamp(scheduling, getTimeNowUs() + delayUs, action);
-}
-
-/**
- * @brief Schedule an event at specific delay after now
- *
- * Invokes event callback after the specified amount of time.
- * callback would be executed either on ISR thread or current thread if we would need to execute right away
- *
- * @param [in, out] scheduling Data structure to keep this event in the collection.
- * @param [in] delayUs the number of microseconds before the output signal immediate output if delay is zero.
- * @param [in] dwell the number of ticks of output duration.
- */
-void SingleTimerExecutor::scheduleByTimestamp(scheduling_s *scheduling, efitimeus_t timeUs, action_s action) {
-	scheduleByTimestampNt(scheduling, US2NT(timeUs), action);
-}
-
-void SingleTimerExecutor::scheduleByTimestampNt(scheduling_s* scheduling, efitime_t nt, action_s action) {
+void SingleTimerExecutor::scheduleByTimestampNt(const char *msg, scheduling_s* scheduling, efitick_t nt, action_s action) {
 	ScopePerf perf(PE::SingleTimerExecutorScheduleByTimestamp);
 
 #if EFI_ENABLE_ASSERTS
-	int deltaTimeUs = NT2US(nt - getTimeNowNt());
+	efidur_t deltaTimeNt = nt - getTimeNowNt();
 
-	if (deltaTimeUs >= TOO_FAR_INTO_FUTURE_US) {
+	if (deltaTimeNt >= TOO_FAR_INTO_FUTURE_NT) {
 		// we are trying to set callback for too far into the future. This does not look right at all
-		firmwareError(CUSTOM_ERR_TASK_TIMER_OVERFLOW, "scheduleByTimestampNt() too far: %d", deltaTimeUs);
+		int32_t intDeltaTimeNt = (int32_t)deltaTimeNt;
+		firmwareError(ObdCode::CUSTOM_ERR_TASK_TIMER_OVERFLOW, "scheduleByTimestampNt() too far: %ld %s", intDeltaTimeNt, msg);
 		return;
 	}
 #endif
 
 	scheduleCounter++;
-	bool alreadyLocked = true;
-	if (!reentrantFlag) {
-		// this would guard the queue and disable interrupts
-		alreadyLocked = lockAnyContext();
-	}
+
+	// Lock for queue insertion - we may already be locked, but that's ok
+	chibios_rt::CriticalSectionLocker csl;
+
 	bool needToResetTimer = queue.insertTask(scheduling, nt, action);
 	if (!reentrantFlag) {
-		doExecute();
+		executeAllPendingActions();
 		if (needToResetTimer) {
 			scheduleTimerCallback();
 		}
-		if (!alreadyLocked)
-			unlockAnyContext();
 	}
+}
+
+void SingleTimerExecutor::cancel(scheduling_s* scheduling) {
+	// Lock for queue removal - we may already be locked, but that's ok
+	chibios_rt::CriticalSectionLocker csl;
+
+	queue.remove(scheduling);
 }
 
 void SingleTimerExecutor::onTimerCallback() {
 	timerCallbackCounter++;
-	bool alreadyLocked = lockAnyContext();
-	doExecute();
+
+	chibios_rt::CriticalSectionLocker csl;
+
+	executeAllPendingActions();
 	scheduleTimerCallback();
-	if (!alreadyLocked)
-		unlockAnyContext();
 }
 
 /*
  * this private method is executed under lock
  */
-void SingleTimerExecutor::doExecute() {
+void SingleTimerExecutor::executeAllPendingActions() {
 	ScopePerf perf(PE::SingleTimerExecutorDoExecute);
 
-	doExecuteCounter++;
+	executeAllPendingActionsInvocationCounter++;
 	/**
 	 * Let's execute actions we should execute at this point.
 	 * reentrantFlag takes care of the use case where the actions we are executing are scheduling
 	 * further invocations
 	 */
 	reentrantFlag = true;
-	int shouldExecute = 1;
+
 	/**
 	 * in real life it could be that while we executing listeners time passes and it's already time to execute
 	 * next listeners.
 	 * TODO: add a counter & figure out a limit of iterations?
 	 */
-	int totalExecuted = 0;
-	while (shouldExecute > 0) {
-		/**
-		 * It's worth noting that that the actions might be adding new actions into the queue
-		 */
+
+	// starts at -1 because do..while will run a minimum of once
+	executeCounter = -1;
+
+	bool didExecute;
+	do {
 		efitick_t nowNt = getTimeNowNt();
-		shouldExecute = queue.executeAll(nowNt);
-		totalExecuted += shouldExecute;
-	}
-	lastExecutionCount = totalExecuted;
+		didExecute = queue.executeOne(nowNt);
+
+		// if we're stuck in a loop executing lots of events, panic!
+		if (executeCounter++ == 500) {
+			firmwareError(ObdCode::CUSTOM_ERR_LOCK_ISSUE, "Maximum scheduling run length exceeded - CPU load too high");
+		}
+
+	} while (didExecute);
+
+	maxExecuteCounter = maxI(maxExecuteCounter, executeCounter);
+
 	if (!isLocked()) {
-		firmwareError(CUSTOM_ERR_LOCK_ISSUE, "Someone has stolen my lock");
+		firmwareError(ObdCode::CUSTOM_ERR_LOCK_ISSUE, "Someone has stolen my lock");
 		return;
 	}
 	reentrantFlag = false;
@@ -169,27 +143,29 @@ void SingleTimerExecutor::scheduleTimerCallback() {
 	 * Let's grab fresh time value
 	 */
 	efitick_t nowNt = getTimeNowNt();
-	nextEventTimeNt = queue.getNextEventTime(nowNt);
-	efiAssertVoid(CUSTOM_ERR_6625, nextEventTimeNt > nowNt, "setTimer constraint");
-	if (nextEventTimeNt == EMPTY_QUEUE)
+	expected<efitick_t> nextEventTimeNt = queue.getNextEventTime(nowNt);
+
+	if (!nextEventTimeNt) {
 		return; // no pending events in the queue
-	int32_t hwAlarmTime = NT2US((int32_t)nextEventTimeNt - (int32_t)nowNt);
-	uint32_t beforeHwSetTimer = getTimeNowLowerNt();
-	setHardwareUsTimer(hwAlarmTime == 0 ? 1 : hwAlarmTime);
-	hwSetTimerDuration = getTimeNowLowerNt() - beforeHwSetTimer;
+	}
+
+	efiAssertVoid(ObdCode::CUSTOM_ERR_6625, nextEventTimeNt.Value > nowNt, "setTimer constraint");
+
+	setHardwareSchedulerTimer(nowNt, nextEventTimeNt.Value);
 }
 
-void initSingleTimerExecutorHardware(void) {
-	globalTimerCallback = executorCallback;
+void initSingleTimerExecutorHardware() {
 	initMicrosecondTimer();
 }
 
 void executorStatistics() {
 	if (engineConfiguration->debugMode == DBG_EXECUTOR) {
-#if EFI_TUNER_STUDIO && EFI_SIGNAL_EXECUTOR_ONE_TIMER
-		tsOutputChannels.debugIntField1 = ___engine.executor.timerCallbackCounter;
-		tsOutputChannels.debugIntField2 = ___engine.executor.doExecuteCounter;
-		tsOutputChannels.debugIntField3 = ___engine.executor.scheduleCounter;
+#if EFI_TUNER_STUDIO
+		engine->outputChannels.debugIntField1 = ___engine.executor.timerCallbackCounter;
+		engine->outputChannels.debugIntField2 = ___engine.executor.executeAllPendingActionsInvocationCounter;
+		engine->outputChannels.debugIntField3 = ___engine.executor.scheduleCounter;
+		engine->outputChannels.debugIntField4 = ___engine.executor.executeCounter;
+		engine->outputChannels.debugIntField5 = ___engine.executor.maxExecuteCounter;
 #endif /* EFI_TUNER_STUDIO */
 	}
 }

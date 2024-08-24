@@ -1,6 +1,9 @@
 /**
  * @file	rusefi_enums.h
- * @brief	Fundamental rusEfi enumerable types live here
+ * @brief	Fundamental rusEFI enumerable types live here
+ *
+ * This and few over headers are part of integration API between C/C++ and code generator for memory meta and java code.
+ * TODO: move enums which should not be visible outside of the firmware out of 'integration API' headers like this one
  *
  * @note this file should probably not include any other files
  *
@@ -10,429 +13,167 @@
 
 #pragma once
 
+#include <rusefi/true_false.h>
 #include "efifeatures.h"
 #include "obd_error_codes.h"
+#include "engine_types.h"
 // we do not want to start the search for header from current folder so we use brackets here
 // https://stackoverflow.com/questions/21593/what-is-the-difference-between-include-filename-and-include-filename
 #include <rusefi_hw_enums.h>
-
-// I believe that TunerStudio curve editor has a bug with F32 support
-// because of that bug we cannot have '1.05' for 5% extra multiplier
-/**
- * *0.01 because of https://sourceforge.net/p/rusefi/tickets/153/
- */
+#include "rusefi_hw_pin_mode.h"
 
 #define PERCENT_MULT 100.0f
 #define PERCENT_DIV 0.01f
 
-/**
- * http://rusefi.com/wiki/index.php?title=Manual:Engine_Type
+/* diagnostic for brain pins
+ * can be combination of few bits
+ * defined as bit mask
+ * PIN_UNKNOWN is reported for pins with no diagnostic support, like on-chip gpio
  */
-typedef enum {
-	DEFAULT_FRANKENSO = 0,
-	AUDI_AAN = 1,
-	/**
-	 * 1995 Dodge Neon
-	 * http://rusefi.com/forum/viewtopic.php?t=360
-	 */
-	DODGE_NEON_1995 = 2,
-	/**
-	 * 1996 1.3 Ford Aspire
-	 * http://rusefi.com/forum/viewtopic.php?t=375
-	 */
-	FORD_ASPIRE_1996 = 3,
-	/**
-	 * 36-1 toothed wheel engine
-	 * http://rusefi.com/forum/viewtopic.php?t=282
-	 */
-	FORD_FIESTA = 4,
-	NISSAN_PRIMERA = 5,
-	HONDA_ACCORD_CD = 6,
-	FORD_INLINE_6_1995 = 7,
-	/**
-	 * one cylinder engine
-	 * 139qmb 50-90cc
-	 * http://rusefi.com/forum/viewtopic.php?f=3&t=332
-	 */
-	GY6_139QMB = 8,
-
-	MAZDA_MIATA_NB1 = 9,
-
-	ROVER_V8 = 10,
-
-	MRE_MIATA_NB2_MTB = 11,
-
-	MRE_MIATA_NA6 = 12,
-
-	MRE_MIATA_NB2 = 13,
-
-	FORD_ESCORT_GT = 14,
-
-	CITROEN_TU3JP = 15,
-
-	MITSU_4G93 = 16,
-
-	/**
-	 * a version of HONDA_ACCORD_CD which only uses two of three trigger input sensors
-	 */
-	HONDA_ACCORD_CD_TWO_WIRES = 17,
-
-	HONDA_ACCORD_CD_DIP = 18,
-
-	// Frankenstein board
-	MIATA_1990 = 19,
-	MIATA_1994_DEVIATOR = 20,
-	MIATA_1996 = 21,
-
-	SUBARU_2003_WRX = 22,
-
-	DODGE_NEON_2003_CAM = 23,
-	BMW_M73_M = 24,
-
-	BMW_E34 = 25,
-
-	TEST_ENGINE = 26,
-
-	// used by unit test
-	// see https://github.com/rusefi/rusefi/issues/898
-	// see TriggerWaveform::bothFrontsRequired
-	ISSUE_898 = 27,
-
-	MAZDA_626 = 28,
-
-	SACHS = 29,
-
-	MRE_BOARD_TEST = 30,
-
-	DODGE_RAM = 31,
-
-	VW_ABA = 32,
-
-	DODGE_STRATUS = 33,
-
-	DAIHATSU = 34,
-
-	CAMARO_4 = 35,
-
-	SUZUKI_VITARA = 36,
-
-	CHEVY_C20_1973 = 37,
-
-	TOYOTA_JZS147 = 38, // 2JZ-GTE NON VVTi
-
-	LADA_KALINA = 39,
-
-	BMW_M73_F = 40,
-
-	// Frankenso board
-	MIATA_NA6_MAP = 41,
-
-	ZIL_130 = 42,
-
-	HONDA_600 = 43,
-
-	TOYOTA_2JZ_GTE_VVTi = 44,
-
-	TEST_ENGINE_VVT = 45,
-
-	DODGE_NEON_2003_CRANK = 46,
-
-	/**
-	 * proper NB2 setup, 2003 red test mule car
-	 */
-	MAZDA_MIATA_2003 = 47,
-
-	HONDA_ACCORD_1_24_SHIFTED = 48,
-
-	FRANKENSO_QA_ENGINE = 49,
-
-	/**
-	 * this is about unit-testing skipped wheel trigger
-	 */
-	TEST_CIVIC_4_0_BOTH = 50,
-
-	/**
-	 * this is about unit-testing skipped wheel trigger
-	 */
-	TEST_CIVIC_4_0_RISE = 51,
-
-
-	TEST_ISSUE_366_BOTH = 52,
-	TEST_ISSUE_366_RISE = 53,
-
-	/**
-	 * green Hunchback race car - VVT engine on a NA body with NA return fuel lines which
-	 * means different fuel pressure situation
-	 */
-	MAZDA_MIATA_2003_NA_RAIL = 54,
-
-	MAZDA_MIATA_2003_BOARD_TEST = 55,
-
-	MAZDA_MIATA_NA8 = 56,
-
-	// see also	MIATA_NA6_MAP = 41
-	MIATA_NA6_VAF = 57,
-
-	ETB_BENCH_ENGINE = 58,
-
-	TLE8888_BENCH_ENGINE = 59,
-
-	MICRO_RUS_EFI = 60,
-
-	PROTEUS = 61,
-
-	VW_B6 = 62,
-
-	BMW_M73_PROTEUS = 63,
-
-	/**
-	 * this configuration has as few pins configured as possible
-	 */
-	MINIMAL_PINS = 99,
-	PROMETHEUS_DEFAULTS = 100,
-	SUBARUEJ20G_DEFAULTS = 101,
-	VAG_18_TURBO = 102,
-
-	TEST_33816 = 103,
-
-	BMW_M73_MRE = 104,
-	BMW_M73_MRE_SLAVE = 105,
-
-	Force_4_bytes_size_engine_type = ENUM_32_BITS,
-} engine_type_e;
-
-
-/**
- * @see http://rusefi.com/wiki/index.php?title=Manual:Software:Trigger
- */
-typedef enum {
-	TT_TOOTHED_WHEEL = 0,
-	TT_FORD_ASPIRE = 1,
-	TT_DODGE_NEON_1995 = 2,
-	/**
-	 * https://rusefi.com/wiki/index.php?title=Manual:Software:Trigger#Mazda_Miata_NA
-	 */
-	TT_MAZDA_MIATA_NA = 3,
-	/**
-	 * NB1 means non-VVT NB, 99 and 00 1.8 engine
-	 */
-	TT_MAZDA_MIATA_NB1 = 4,
-	TT_GM_7X = 5,
-	TT_MINI_COOPER_R50 = 6,
-	TT_MAZDA_SOHC_4 = 7,
-	/**
-	 * "60/2"
-	 * See also TT_ONE_PLUS_TOOTHED_WHEEL_60_2
-	 */
-	TT_TOOTHED_WHEEL_60_2 = 8,
-	TT_TOOTHED_WHEEL_36_1 = 9,
-
-	TT_HONDA_4_24_1 = 10,
-
-	TT_MITSUBISHI = 11,
-
-	// this makes sense because mechanical spark distribution does not require synchronization
-	TT_HONDA_4_24 = 12,
-
-	TT_HONDA_1_4_24 = 13,
-
-	// cam-based
-	TT_DODGE_NEON_2003_CAM = 14,
-
-	TT_MAZDA_DOHC_1_4 = 15,
-
-	// "1+1"
-	// see also TT_ONE a bit below
-	TT_ONE_PLUS_ONE = 16,
-	// "1+60/2"
-	TT_ONE_PLUS_TOOTHED_WHEEL_60_2 = 17,
-	// just one channel with just one tooth
-	TT_ONE = 18,
-
-	TT_DODGE_RAM = 19,
-	/**
-	 * It looks like this is the VR shape if you have your wires flipped
-	 */
-	TT_60_2_VW = 20,
-
-	TT_HONDA_1_24 = 21,
-
-	TT_DODGE_STRATUS = 22,
-
-	TT_36_2_2_2 = 23,
-
-	/**
-	 * only the 4 tooth signal, without the 360 signal
-	 * 8,2,2,2 Nissan pattern
-	 * See also TT_NISSAN_SR20VE_360
-	 */
-	TT_NISSAN_SR20VE = 24,
-
-	TT_2JZ_3_34 = 25,
-
-	TT_ROVER_K = 26,
-
-	TT_GM_LS_24 = 27,
-
-	TT_HONDA_CBR_600 = 28,
-
-	TT_2JZ_1_12 = 29,
-
-	TT_HONDA_CBR_600_CUSTOM = 30,
-
-	// skipped 3/1 with cam sensor for testing
-	TT_3_1_CAM = 31,
-
-	// crank-based in case your cam is broken
-	TT_DODGE_NEON_2003_CRANK = 32,
-
-	/**
-	 * this takes care of crank sensor, VVT sensor should be configured separately
-	 * for VVT simulated trigger signal we have https://github.com/rusefi/rusefi/issues/566 gap
-	 * See also TT_MAZDA_MIATA_VVT_TEST
-	 */
-	TT_MIATA_VVT = 33,
-
-	/**
-	 * This is a different version of TT_HONDA_ACCORD_1_24
-	 * See https://sourceforge.net/p/rusefi/tickets/319/
-	 */
-	TT_HONDA_ACCORD_1_24_SHIFTED = 34,
-
-	/**
-	 * a version of NB1 with shifted CAM, useful for VVT testing & development
-	 */
-	TT_MAZDA_MIATA_VVT_TEST = 35,
-
-	TT_SUBARU_7_6 = 36,
-
-	// this one is 6 cylinder, see TT_JEEP_4_cyl for 4 cylinders
-	TT_JEEP_18_2_2_2 = 37,
-
-	/*
-	 * See also TT_NISSAN_SR20VE
-	 */
-	TT_NISSAN_SR20VE_360 = 38,
-
-	TT_DODGE_NEON_1995_ONLY_CRANK = 39,
-
-	// Jeep XJ 2500cc 4 cylinder. See also TT_JEEP_18_2_2_2 for 6 cylinders
-	TT_JEEP_4_CYL = 40,
-
-	// magneti marelli Fiat/Lancia IAW P8 from the 90', 2.0 16 v turbo engine - Lancia Coupe
-	// https://rusefi.com/forum/viewtopic.php?f=5&t=1440
-	TT_FIAT_IAW_P8 = 41,
-
-	TT_MAZDA_Z5 = 42,
-
-	/**
-	 * This shape for camshaft ONLY
-	 */
-	TT_MIATA_NB2_VVT_CAM = 43,
-
-	// do not forget to edit "#define trigger_type_e_enum" line in integration/rusefi_config.txt file to propogate new value to rusefi.ini TS project
-	// do not forget to invoke "gen_config.bat" once you make changes to integration/rusefi_config.txt
-	// todo: one day a hero would integrate some of these things into Makefile in order to reduce manual magic
-	//
-	// Another point: once you add a new trigger, run get_trigger_images.bat which would run rusefi_test.exe from unit_tests
-	//
-	TT_UNUSED = 44, // this is used if we want to iterate over all trigger types
-
-	Force_4_bytes_size_trigger_type = ENUM_32_BITS,
-} trigger_type_e;
-
-typedef enum {
-	ADC_OFF = 0,
-	ADC_SLOW = 1,
-	ADC_FAST = 2,
-
-	Force_4_bytes_size_adc_channel_mode = ENUM_32_BITS,
-} adc_channel_mode_e;
-
-typedef enum {
-	TV_FALL = 0,
-	TV_RISE = 1
-} trigger_value_e;
+typedef enum __attribute__ ((__packed__))
+{
+	PIN_OK = 0,
+	PIN_OPEN = 0x01,
+	PIN_SHORT_TO_GND = 0x02,
+	PIN_SHORT_TO_BAT = 0x04,
+	PIN_OVERLOAD =	0x08,
+	PIN_DRIVER_OVERTEMP = 0x10,
+	PIN_DRIVER_OFF = 0x20,
+	PIN_UNKNOWN = 0x80
+} brain_pin_diag_e;
 
 // see also PWM_PHASE_MAX_WAVE_PER_PWM
 // todo: better names?
-typedef enum {
+enum class TriggerWheel : uint8_t {
 	T_PRIMARY = 0,
 	T_SECONDARY = 1,
-	// todo: I really do not want to call this 'tertiary'. maybe we should rename all of these?
-	T_CHANNEL_3 = 2,
-	T_NONE = 15
-} trigger_wheel_e;
+};
 
-// see also 'HW_EVENT_TYPES'
-typedef enum {
-	SHAFT_PRIMARY_FALLING = 0,
-	SHAFT_PRIMARY_RISING = 1,
-	SHAFT_SECONDARY_FALLING = 2,
-	SHAFT_SECONDARY_RISING = 3,
-	SHAFT_3RD_FALLING = 4,
-	SHAFT_3RD_RISING = 5,
-} trigger_event_e;
+typedef enum  __attribute__ ((__packed__)) {
+	/**
+	 * This mode is useful for troubleshooting and research - events are logged but no effects on phase synchronization
+	 */
+	VVT_INACTIVE = 0,
 
-typedef enum {
-	VVT_FIRST_HALF = 0,
-	VVT_SECOND_HALF = 1,
-	VVT_2GZ = 2,
-	MIATA_NB2 = 3,
-	Force_4_bytes_size_vvt_mode = ENUM_32_BITS,
+	/**
+	 * Single tooth on the camshaft anywhere in the 720 degree cycle
+	 */
+	VVT_SINGLE_TOOTH = 1,
+	/**
+	 * Toyota 2JZ has three cam tooth. We pick one of these three tooth to synchronize based on the expected angle position of the event
+	 */
+	VVT_TOYOTA_3_TOOTH = 2,
+	/**
+	 * Mazda NB2 has three cam tooth. We synchronize based on gap ratio.
+	 * @see TT_VVT_MIATA_NB
+	 */
+	VVT_MIATA_NB = 3,
+
+	VVT_MITSUBISHI_4G69 = 4,
+
+	/**
+	 * @see TT_VVT_BOSCH_QUICK_START
+	 */
+	VVT_BOSCH_QUICK_START = 5,
+
+	/**
+	 * 1.8l Toyota 1ZZ-FE https://rusefi.com/forum/viewtopic.php?f=3&t=1735
+	 * 4 minus one
+	 */
+	VVT_TOYOTA_4_1 = 6,
+
+	VVT_FORD_ST170 = 7,
+
+	VVT_BARRA_3_PLUS_1 = 8,
+
+	VVT_NISSAN_VQ = 9,
+
+	/**
+	 * 4 equally spaced no way to sync
+	 */
+	VVT_HONDA_K_INTAKE = 10,
+
+	VVT_NISSAN_MR = 11,
+
+	VVT_MITSUBISHI_3A92 = 12,
+
+	VVT_MAP_V_TWIN = 13,
+
+	VVT_MITSUBISHI_6G75 = 14,
+
+	VVT_MAZDA_SKYACTIV = 15,
+
+	/**
+	 * 4 plus one
+	 */
+	VVT_HONDA_K_EXHAUST = 16,
+
+	VVT_MITSUBISHI_4G9x = 17,
+	VVT_MITSUBISHI_4G63 = 18,
+
+	VVT_FORD_COYOTE = 19,
+
+  VVT_MITSUBISHI_6G72 = 20,
+
+  VVT_HONDA_CBR_600 = 21,
+
+  VVT_MAZDA_L = 22,
+
+  VVT_DEV = 23,
+
 } vvt_mode_e;
 
 /**
  * This enum is used to select your desired Engine Load calculation algorithm
  */
-typedef enum {
-	/**
-	 * raw Mass Air Flow sensor value algorithm. http://en.wikipedia.org/wiki/Mass_flow_sensor
-	 */
-	LM_PLAIN_MAF = 0,
-	/**
-	 * Throttle Position Sensor value is used as engine load. http://en.wikipedia.org/wiki/Throttle_position_sensor
-	 */
-	LM_ALPHA_N = 1,
-	/**
-	 * raw Manifold Absolute Pressure sensor value is used as engine load http://en.wikipedia.org/wiki/MAP_sensor
-	 */
-	LM_MAP = 2,
+typedef enum __attribute__ ((__packed__)) {
 	/**
 	 * Speed Density algorithm - Engine Load is a function of MAP, VE and target AFR
 	 * http://articles.sae.org/8539/
 	 */
-	LM_SPEED_DENSITY = 3,
+	LM_SPEED_DENSITY = 0,
 
 	/**
 	 * MAF with a known kg/hour function
 	 */
-	LM_REAL_MAF = 4,
+	LM_REAL_MAF = 1,
 
-	Force_4_bytes_size_engine_load_mode = ENUM_32_BITS,
+	LM_ALPHA_N = 2,
+
+	LM_LUA = 3,
+
+	// This mode is for unit testing only, so that tests don't have to rely on a particular real airmass mode
+	LM_MOCK = 100,
+
 } engine_load_mode_e;
 
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	DM_NONE = 0,
 	DM_HD44780 = 1,
 	DM_HD44780_OVER_PCF8574 = 2,
 
-	Force_4_bytes_size_display_mode = ENUM_32_BITS,
 
 } display_mode_e;
 
-typedef enum {
-	LF_NATIVE = 0,
-	/**
-	 * http://www.efianalytics.com/MegaLogViewer/
-	 * log example: http://svn.code.sf.net/p/rusefi/code/trunk/misc/ms_logs/
-	 */
-	LM_MLV = 1,
+typedef enum  __attribute__ ((__packed__)) {
+	TL_AUTO = 0,
+	TL_SEMI_AUTO = 1,
+	TL_MANUAL = 2,
+	TL_HALL = 3,
 
-	Force_4_bytes_size_log_format = ENUM_32_BITS,
-} log_format_e;
+} tle8888_mode_e;
 
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
+	DWELL_2MS = 0,
+	DWELL_4MS = 1,
+	DWELL_8MS = 2,
+	DWELL_16MS = 3,
+	DWELL_32MS = 4,
+	DWELL_64MS = 5,
+
+} mc33810maxDwellTimer_e;
+
+typedef enum __attribute__ ((__packed__)) {
 	/**
 	 * In auto mode we currently have some pid-like-but-not really PID logic which is trying
 	 * to get idle RPM to desired value by dynamically adjusting idle valve position.
@@ -444,8 +185,41 @@ typedef enum {
 	 * which could be adjusted according to current CLT
 	 */
 	IM_MANUAL = 1,
-	Force_4_bytes_size_idle_mode = ENUM_32_BITS,
+
 } idle_mode_e;
+
+enum class SentEtbType : uint8_t {
+	NONE = 0,
+	GM_TYPE_1 = 1,
+	FORD_TYPE_1 = 2,
+	CUSTOM = 3,
+};
+
+enum class CanGpioType : uint8_t {
+	NONE = 0,
+	DRT = 1,
+	MS = 2,
+};
+
+enum class MsIoBoxId : uint8_t {
+	OFF = 0,
+	ID200 = 1,
+	ID220 = 2,
+	ID240 = 3
+};
+
+enum class MsIoBoxVss : uint8_t {
+	OFF = 0,
+	VR12 = 1,
+	HALL34 = 2,
+	ALL1234 = 3
+};
+
+enum class UiMode : uint8_t {
+	FULL = 0,
+	INSTALLATION = 1,
+	TUNING = 2,
+};
 
 typedef enum __attribute__ ((__packed__)) {
 	/**
@@ -469,15 +243,17 @@ typedef enum __attribute__ ((__packed__)) {
 	PI_PULLDOWN = 2
 } pin_input_mode_e;
 
-#define CRANK_MODE_MULTIPLIER 2.0f
-
+/**
+ * @see getCycleDuration
+ * @see getEngineCycle
+ */
 // todo: better enum name
 typedef enum {
 	OM_NONE = 0,
 	/**
 	 * 720 degree engine cycle but trigger is defined using a 360 cycle which is when repeated.
 	 * For historical reasons we have a pretty weird approach where one crank trigger revolution is
-	 * defined as if it's stretched to 720 degress. See CRANK_MODE_MULTIPLIER
+	 * defined as if it's stretched to 720 degrees. See CRANK_MODE_MULTIPLIER
 	 */
 	FOUR_STROKE_CRANK_SENSOR = 1,
 	/**
@@ -491,16 +267,30 @@ typedef enum {
 
 	/**
 	 * 720 degree engine cycle but trigger is defined using a 180 cycle which is when repeated three more times
+	 * In other words, same pattern is repeated on the crank wheel twice.
 	 */
 	FOUR_STROKE_SYMMETRICAL_CRANK_SENSOR = 4,
 
-	Force_4_bytes_size_operation_mode_e = ENUM_32_BITS,
+	/**
+	 * Same pattern repeated three times on crank wheel. Crazy, I know!
+	 */
+	FOUR_STROKE_THREE_TIMES_CRANK_SENSOR = 5,
+
+	// Same pattern TWELVE TIMES on the crank wheel!
+	// This usually means Honda, which often has a 12 tooth crank wheel or 24 tooth cam wheel
+	// without a missing tooth, plus a single tooth cam channel to resolve the engine phase.
+	FOUR_STROKE_TWELVE_TIMES_CRANK_SENSOR = 6,
+
+	/**
+	 * Same pattern repeated six times on crank wheel like 1995 Lamborghini Diablo
+	 */
+	FOUR_STROKE_SIX_TIMES_CRANK_SENSOR = 7,
 } operation_mode_e;
 
 /**
  * @brief Ignition Mode
  */
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	/**
 	 * in this mode only SPARKOUT_1_OUTPUT is used
 	 */
@@ -516,13 +306,12 @@ typedef enum {
 	 */
 	IM_TWO_COILS = 3,
 
-	Force_4_bytes_size_ignition_mode = ENUM_32_BITS,
 } ignition_mode_e;
 
 /**
  * @see getNumberOfInjections
  */
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	/**
 	 * each cylinder has it's own injector but they all works in parallel
 	 */
@@ -543,20 +332,7 @@ typedef enum {
 	 */
 	IM_SINGLE_POINT = 3,
 
-
-	Force_4_bytes_size_injection_mode = ENUM_32_BITS,
 } injection_mode_e;
-
-/**
- * @brief Ignition Mode while cranking
- */
-typedef enum {
-	CIM_DEFAULT = 0,
-	CIM_FIXED_ANGLE = 1,
-
-	// todo: make this a one byte enum
-	Force_4_bytes_size_cranking_ignition_mode = ENUM_32_BITS,
-} cranking_ignition_mode_e;
 
 typedef enum __attribute__ ((__packed__)) {
 	UART_NONE = 0,
@@ -573,22 +349,54 @@ typedef enum __attribute__ ((__packed__)) {
 	_150KHz
 } spi_speed_e;
 
+
+/**
+ * See spi3mosiPin
+ * See spi2MisoMode
+ */
 typedef enum __attribute__ ((__packed__)) {
 	SPI_NONE = 0,
 	SPI_DEVICE_1 = 1,
 	SPI_DEVICE_2 = 2,
 	SPI_DEVICE_3 = 3,
 	SPI_DEVICE_4 = 4,
+	SPI_DEVICE_5 = 5,
+	SPI_DEVICE_6 = 6,
 } spi_device_e;
 
-typedef enum {
-	MS_AUTO = 0,
-	MS_ALWAYS = 1,
-	MS_NEVER = 2,
-	Force_4_bytes_size_mass_storage = ENUM_32_BITS,
-} mass_storage_e;
+#define SPI_TOTAL_COUNT 6
 
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
+	BMW_e46 = 0,
+	W202 = 1,
+	BMW_e90 = 2,
+	NISSAN_350 = 3,
+	HYUNDAI_PB = 4,
+  HONDA_CIVIC9 = 5,
+} can_vss_nbc_e;
+
+/**
+ * inertia measurement unit, yawn accelerometer
+ * By the way both kinds of BOSCH use Housing : TE 1-967640-1, pins 144969-1 seal 967056-1 plug 967067-2
+ */
+typedef enum __attribute__ ((__packed__)) {
+	IMU_NONE = 0,
+	IMU_VAG = 1,
+	/**
+	 * f037000002
+	 * https://github.com/rusefi/rusefi_documentation/blob/master/OEM-Docs/Bosch/Data%20Sheet_68903691_Acceleration_Sensor_MM5.10.pdf
+	 */
+	IMU_MM5_10 = 2,
+	IMU_TYPE_3 = 3,
+	IMU_TYPE_4 = 4,
+	/**
+	 * Mercedes pn: A 006 542 26 18
+	 * Almost the same as BOSCH above, but XY only and different CAN IDs
+	 */
+	IMU_TYPE_MB_A0065422618 = 5,
+} imu_type_e;
+
+typedef enum __attribute__ ((__packed__)) {
 	ES_BPSX_D1 = 0,
 	/**
 	 * same as innovate LC2
@@ -602,89 +410,15 @@ typedef enum {
 	 */
 	ES_14Point7_Free = 2,
 
-	ES_NarrowBand = 3,
-
 	ES_PLX = 4,
 
 	ES_Custom = 5,
 
 	ES_AEM = 6,
 
-	Force_4_bytes_size_ego_sensor = ENUM_32_BITS,
 } ego_sensor_e;
 
-typedef brain_pin_e output_pin_e;
-
-/**
- * https://rusefi.com//wiki/index.php?title=Manual:Debug_fields
- */
-typedef enum {
-	DBG_ALTERNATOR_PID = 0,
-	DBG_TPS_ACCEL = 1,
-	DBG_2 = 2,
-	DBG_IDLE_CONTROL = 3,
-	DBG_EL_ACCEL = 4,
-	DBG_TRIGGER_COUNTERS = 5,
-	DBG_FSIO_ADC = 6,
-	/**
-	 * VVT valve control often uses AUX pid #1
-	 */
-	DBG_AUX_PID_1 = 7,
-	/**
-	 * VVT position debugging - not VVT valve control. See AUX pid #1 debug for valve position.
-	 */
-	DBG_VVT = 8,
-	DBG_CRANKING_DETAILS = 9,
-	DBG_IGNITION_TIMING = 10,
-	DBG_FUEL_PID_CORRECTION = 11,
-	DBG_VEHICLE_SPEED_SENSOR = 12,
-	DBG_SD_CARD = 13,
-	DBG_SR5_PROTOCOL = 14,
-	DBG_KNOCK = 15,
-	DBG_16 = 16,
-	/**
-	 * See also DBG_ELECTRONIC_THROTTLE_EXTRA
-	 */
-	DBG_ELECTRONIC_THROTTLE_PID = 17,
-	DBG_EXECUTOR = 18,
-	/**
-	 * See tunerstudio.cpp
-	 */
-	DBG_BENCH_TEST = 19,
-	DBG_AUX_VALVES = 20,
-	/**
-	 * ADC
-	 * See also DBG_ANALOG_INPUTS2
-	 */
-	DBG_ANALOG_INPUTS = 21,
-	
-	DBG_INSTANT_RPM = 22,
-	DBG_FSIO_EXPRESSION = 23,
-	DBG_STATUS = 24,
-	DBG_CJ125 = 25,
-	DBG_CAN = 26,
-	DBG_MAP = 27,
-	DBG_METRICS = 28,
-	DBG_ELECTRONIC_THROTTLE_EXTRA = 29,
-	DBG_ION = 30,
-	DBG_TLE8888 = 31,
-	/**
-	 * See also DBG_ANALOG_INPUTS
-	 */
-	DBG_ANALOG_INPUTS2 = 32,
-	DBG_DWELL_METRIC = 33,
-	DBG_34 = 34,
-	DBG_ETB_LOGIC = 35,
-	DBG_BOOST = 36,
-	DBG_START_STOP = 37,
-	DBG_LAUNCH = 38,
-	DBG_ETB_AUTOTUNE = 39,
-	DBG_40 = 40,
-
-	Force_4_bytes_size_debug_mode_e = ENUM_32_BITS,
-} debug_mode_e;
-
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	MT_CUSTOM = 0,
 	MT_DENSO183 = 1,
 	/**
@@ -719,27 +453,54 @@ typedef enum {
 	 * For an old Freescale MPX4250D use "MT_MPX4250".
 	 * See https://www.nxp.com/docs/en/data-sheet/MPX4250A.pdf
 	 */
-	MT_MPX4250A = 9, 
-	
-	Force_4_bytes_size_cranking_map_type = ENUM_32_BITS,
+	MT_MPX4250A = 9,
+
+
+	/**
+	 * Bosch 2.5 Bar TMap Map Sensor with IAT
+	 * 20 kPa at 0.40V, 250 kPa at 4.65V
+	 * 4 pin:
+	 *    Pin 1 : Sensor Ground
+	 *    Pin 2 : Temp Signal
+	 *    Pin 3 : 5v
+	 *    Pin 4 : Map Signal
+	 * Volkswagen Passat B6
+	 */
+
+	MT_BOSCH_2_5 = 10,
+
+	MT_MAZDA_1_BAR = 11,
+
+	MT_GM_2_BAR = 12,
+
+	MT_GM_1_BAR = 13,
+
+	/**
+	 * 4 bar
+	 */
+	MT_MPXH6400 = 14,
+	/**
+	 * 3 bar
+	 */
+	MT_MPXH6300 = 15,
+
 } air_pressure_sensor_type_e;
 
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	SC_OFF = 0,
 	/**
 	 * You would use this value if you want to see a detailed graph of your trigger events
 	 */
 	SC_TRIGGER = 1,
-	SC_MAP = 2,
+	// unused 2
 	SC_RPM_ACCEL = 3,
 	SC_DETAILED_RPM = 4,
 	SC_AUX_FAST1 = 5,
 
-	Internal_ForceMyEnumIntSize_sensor_chart = ENUM_32_BITS,
 } sensor_chart_e;
 
 typedef enum {
-//todo fix enum generator  java tool to support negative	REVERSE = -1,
+	REVERSE = -1,
 	NEUTRAL = 0,
 	GEAR_1 = 1,
 	GEAR_2 = 2,
@@ -748,15 +509,15 @@ typedef enum {
 
 } gear_e;
 
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	CUSTOM = 0,
 	Bosch0280218037 = 1,
 	Bosch0280218004 = 2,
 	DensoTODO = 3,
-	Internal_ForceMyEnumIntSize_maf_sensor = ENUM_32_BITS,
+
 } maf_sensor_type_e;
 
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	/**
 	 * This is the default mode in which ECU controls timing dynamically
 	 */
@@ -767,110 +528,231 @@ typedef enum {
 	 */
 	TM_FIXED = 1,
 
-	Internal_ForceMyEnumIntSize_timing_mode = ENUM_32_BITS,
 } timing_mode_e;
-
-typedef enum {
-    CS_OPEN = 0,
-    CS_CLOSED = 1,
-    CS_SWIRL_TUMBLE = 2,
-
-	Internal_ForceMyEnumIntSize_chamber_stype = ENUM_32_BITS,
-} chamber_style_e;
 
 /**
  * Net Body Computer types
  */
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	CAN_BUS_NBC_NONE = 0,
 	CAN_BUS_NBC_FIAT = 1,
 	CAN_BUS_NBC_VAG = 2,
 	CAN_BUS_MAZDA_RX8 = 3,
-	CAN_BUS_NBC_BMW = 4,
+	CAN_BUS_BMW_E46 = 4,
 	CAN_BUS_W202_C180 = 5,
+    CAN_BUS_BMW_E90 = 6,
+	CAN_BUS_Haltech = 7,
+	CAN_BUS_MQB = 8,
+	CAN_BUS_NISSAN_VQ = 9,
+	CAN_BUS_GENESIS_COUPE = 10,
+	CAN_BUS_HONDA_K = 11,
+	CAN_AIM_DASH = 12,
+	CAN_BUS_MS_SIMPLE_BROADCAST = 13,
 
-	Internal_ForceMyEnumIntSize_can_nbc = ENUM_32_BITS,
 } can_nbc_e;
 
-typedef enum {
-	NOT_READY,
-	/**
-	 * the step after this one is always IS_INTEGRATING
-	 * We only integrate if we have RPM
-	 */
-	READY_TO_INTEGRATE,
-	/**
-	 * the step after this one is always WAITING_FOR_ADC_TO_SKIP
-	 */
-	IS_INTEGRATING,
-	/**
-	 * the step after this one is always WAITING_FOR_RESULT_ADC
-	 */
-	WAITING_FOR_ADC_TO_SKIP,
-	/**
-	 * the step after this one is always IS_SENDING_SPI_COMMAND or READY_TO_INTEGRATE
-	 */
-	WAITING_FOR_RESULT_ADC,
-	/**
-	 * the step after this one is always READY_TO_INTEGRATE
-	 */
-	IS_SENDING_SPI_COMMAND,
-} hip_state_e;
-
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	TCHARGE_MODE_RPM_TPS = 0,
 	TCHARGE_MODE_AIR_INTERP = 1,
-	Force_4bytes_size_tChargeMode_e = ENUM_32_BITS,
+	TCHARGE_MODE_AIR_INTERP_TABLE = 2,
+
 } tChargeMode_e;
 
-// peak type
-typedef enum {
-  MINIMUM = -1,
-  NOT_A_PEAK = 0,
-  MAXIMUM = 1
-} PidAutoTune_Peak;
-
-// auto tuner state
-typedef enum {
-  AUTOTUNER_OFF = 0,
-  STEADY_STATE_AT_BASELINE = 1,
-  STEADY_STATE_AFTER_STEP_UP = 2,
-  RELAY_STEP_UP = 4,
-  RELAY_STEP_DOWN = 8,
-  CONVERGED = 16,
-  FAILED = 128
-} PidAutoTune_AutoTunerState;
-
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	INIT = 0,
 	TPS_THRESHOLD = 1,
 	RPM_DEAD_ZONE = 2,
 	PID_VALUE = 4,
-	PWM_PRETTY_CLOSE = 8,
 	PID_UPPER = 16,
-	ADJUSTING = 32,
 	BLIP = 64,
-	/**
-	 * Live Docs reads 4 byte value so we want 4 byte enum
-	 */
-	Force_4bytes_size_idle_state_e = ENUM_32_BITS,
+
 } idle_state_e;
 
-typedef enum {
+// todo: should this be just a boolean?
+typedef enum __attribute__ ((__packed__)) {
 	OPEN_LOOP = 0,
 	CLOSED_LOOP = 1,
-	Force_4bytes_size_boostType_e = ENUM_32_BITS,
+
 } boostType_e;
 
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	SWITCH_INPUT_LAUNCH = 0,
 	CLUTCH_INPUT_LAUNCH = 1,
 	ALWAYS_ACTIVE_LAUNCH = 2,
-	Force_4bytes_size_launchActivationMode_e = ENUM_32_BITS,
+	STOP_INPUT_LAUNCH = 3,
 } launchActivationMode_e;
 
-typedef enum {
+typedef enum __attribute__ ((__packed__)) {
 	SWITCH_INPUT_ANTILAG = 0,
 	ALWAYS_ON_ANTILAG = 1,
-	Force_4bytes_size_antiLagActivationMode_e = ENUM_32_BITS,
 } antiLagActivationMode_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	GPPWM_Zero = 0,
+	GPPWM_Tps = 1,
+	GPPWM_Map = 2,
+	GPPWM_Clt = 3,
+	GPPWM_Iat = 4,
+	GPPWM_FuelLoad = 5,
+	GPPWM_IgnLoad = 6,
+	GPPWM_AuxTemp1 = 7,
+	GPPWM_AuxTemp2 = 8,
+	GPPWM_AccelPedal = 9,
+	GPPWM_Vbatt = 10,
+	GPPWM_VVT_1I = 11,
+	GPPWM_VVT_1E = 12,
+	GPPWM_VVT_2I = 13,
+	GPPWM_VVT_2E = 14,
+	GPPWM_EthanolPercent = 15,
+	GPPWM_AuxLinear1 = 16,
+	GPPWM_AuxLinear2 = 17,
+	GPPWM_GppwmOutput1 = 18,
+	GPPWM_GppwmOutput2 = 19,
+	GPPWM_GppwmOutput3 = 20,
+	GPPWM_GppwmOutput4 = 21,
+	GPPWM_LuaGauge1 = 22,
+	GPPWM_LuaGauge2 = 23,
+	GPPWM_Rpm = 24,
+	GPPWM_DetectedGear = 25,
+	GPPWM_BaroPressure = 26,
+	GPPWM_Egt1 = 27,
+	GPPWM_Egt2 = 28,
+	// remember to manually sync 'pwmAxisLabels' in tunerstudio.template.ini
+	// todo: rename 'pwmAxisLabels' and maybe even gppwm_channel_e since we now use wider than just 'gppwm'?
+} gppwm_channel_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	B50KBPS = 0, // 50kbps
+	B83KBPS = 1, // 83.33kbps
+	B100KBPS = 2, // 100kbps
+	B125KBPS = 3, // 125kbps
+	B250KBPS = 4, // 250kbps
+	B500KBPS = 5, // 500kbps
+	B1MBPS = 6, // 1Mbps
+} can_baudrate_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	GPPWM_GreaterThan = 0,
+	GPPWM_LessThan = 1,
+} gppwm_compare_mode_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	VE_None = 0,
+	VE_MAP = 1,
+	VE_TPS = 2,
+} ve_override_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	AFR_None = 0,
+	AFR_MAP = 1,
+	AFR_Tps = 2,
+	AFR_AccPedal = 3,
+	AFR_CylFilling = 4,
+} load_override_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	DC_None = 0,
+	DC_Throttle1 = 1,
+	DC_Throttle2 = 2,
+	// this is about SINGLE DC-motor idle valve like 90s volkswagen/earlier M111 engines
+	// NOT to be used in dual H-bridge stepper control
+	DC_IdleValve = 3,
+	DC_Wastegate = 4,
+} dc_function_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	STEPPER_FULL = 0,
+	STEPPER_HALF = 2,
+	STEPPER_FOURTH = 4,
+	STEPPER_EIGHTH = 8,
+} stepper_num_micro_steps_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	IPT_Low = 0,
+	IPT_High = 1,
+} injector_pressure_type_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	ICM_None = 0,
+	ICM_FixedRailPressure = 1,
+	ICM_SensedRailPressure = 2,
+} injector_compensation_mode_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	FPM_Absolute = 0,
+	FPM_Gauge = 1,
+	FPM_Differential = 2,
+} fuel_pressure_sensor_mode_e;
+
+typedef enum __attribute__ ((__packed__)) {
+	INJ_None = 0,
+	INJ_PolynomialAdder = 1,
+	INJ_FordModel = 2,
+} InjectorNonlinearMode;
+
+typedef enum __attribute__ ((__packed__)) {
+    HPFP_CAM_NONE = 0,
+    HPFP_CAM_IN1 = 1,
+    HPFP_CAM_EX1 = 2,
+    HPFP_CAM_IN2 = 3,
+    HPFP_CAM_EX2 = 4,
+} hpfp_cam_e;
+
+#if __cplusplus
+#include <cstdint>
+
+enum class TsCalMode : uint8_t {
+	None = 0,
+	Tps1Max = 1,
+	Tps1Min = 2,
+	EtbKp = 3,
+	EtbKi = 4,
+	EtbKd = 5,
+	Tps1SecondaryMax = 6,
+	Tps1SecondaryMin = 7,
+	Tps2Max = 8,
+	Tps2Min = 9,
+	Tps2SecondaryMax = 10,
+	Tps2SecondaryMin = 11,
+	PedalMin = 12,
+	PedalMax = 13,
+};
+
+enum class GearControllerMode : uint8_t {
+	None = 0,
+	ButtonShift = 1,
+	Automatic = 2,
+	Generic = 3,
+};
+
+enum class TransmissionControllerMode : uint8_t {
+	None = 0,
+	SimpleTransmissionController = 1,
+	Generic4 = 2,
+	Gm4l6x = 3,
+};
+
+enum class InjectionTimingMode : uint8_t {
+	End = 0,
+	Start = 1,
+	Center = 2,
+};
+
+enum class SelectedGear : uint8_t {
+	Invalid = 0,
+	ManualPlus = 1,
+	ManualMinus = 2,
+	Park = 3,
+	Reverse = 4,
+	Neutral = 5,
+	Drive = 6,
+	Manual = 7,
+	Manual3 = 8,
+	Manual2 = 9,
+	Manual1 = 10,
+	Low = 11,
+};
+
+#define SC_Exhaust_First 1
+
+#endif // __cplusplus

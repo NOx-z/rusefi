@@ -1,7 +1,9 @@
-.svn*
 .dep*
 build/
 build_kinetis/
+pinouts
+workarea
+bundle_name.txt
 out/
 logs/
 blbuild/
@@ -14,6 +16,20 @@ doxygen/
 /.idea
 workspace.xml
 java_console_binary
-.vscode
+.vscode/.*
 *.cmp
 *.net
+err.txt
+log.txt
+*.rusefi_binary
+*.kicad_prl
+.*-sentinel
+
+# Eclipse
+.metadata/
+
+# rusEFI simulator makes logs, ignore those
+rusefi_simulator_log.mlg
+
+# bundle
+artifacts

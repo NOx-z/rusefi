@@ -1,9 +1,15 @@
 # List of all the board related files.
-BOARDSRC = $(CHIBIOS)/os/hal/boards/ST_NUCLEO144_H743ZI/board.c
 
-# Required include directories
-BOARDINC = $(CHIBIOS)/os/hal/boards/ST_NUCLEO144_H743ZI
+BOARDCPPSRC = $(BOARD_DIR)/board_configuration.cpp
 
-# Shared variables
-ALLCSRC += $(BOARDSRC)
-ALLINC  += $(BOARDINC)
+DDEFS += -DLED_CRITICAL_ERROR_BRAIN_PIN=Gpio::B14
+
+# Enable ethernet
+LWIP = yes
+ALLOW_SHADOW = yes
+DDEFS += -DCH_CFG_USE_DYNAMIC=TRUE
+DDEFS += -DEFI_ETHERNET=TRUE
+
+DDEFS += -DFIRMWARE_ID=\"nucleo_h743\"
+DDEFS += -DDEFAULT_ENGINE_TYPE=engine_type_e::MINIMAL_PINS
+DDEFS += -DSTATIC_BOARD_ID=STATIC_BOARD_ID_NUCLEO_H743

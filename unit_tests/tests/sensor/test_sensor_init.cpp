@@ -1,10 +1,8 @@
+#include "pch.h"
+
 #include "unit_test_framework.h"
 #include "init.h"
-#include "sensor.h"
 #include "functional_sensor.h"
-
-#include "engine_test_helper.h"
-#include <gtest/gtest.h>
 
 static void postToFuncSensor(Sensor* s, float value) {
 	static_cast<FunctionalSensor*>(s)->postRawValue(value, getTimeNowNt());
@@ -26,15 +24,15 @@ static void postToFuncSensor(Sensor* s, float value) {
 	}
 
 TEST(SensorInit, Tps) {
-	WITH_ENGINE_TEST_HELPER(TEST_ENGINE);
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
 
-	CONFIG(tpsMin) = 200;	// 1 volt
-	CONFIG(tpsMax) = 800;	// 4 volts
+	engineConfiguration->tpsMin = 200;	// 1 volt
+	engineConfiguration->tpsMax = 800;	// 4 volts
 
-	initTps(PASS_ENGINE_PARAMETER_SIGNATURE);
+	initTps();
 
 	// Ensure the sensors were registered
-	auto s = const_cast<Sensor*>(Sensor::getSensorOfType(SensorType::Tps1));
+	auto s = const_cast<Sensor*>(Sensor::getSensorOfType(SensorType::Tps1Primary));
 	ASSERT_NE(nullptr, s);
 
 	// Test in range
@@ -45,19 +43,70 @@ TEST(SensorInit, Tps) {
 	// Test out of range
 	EXPECT_POINT_INVALID(s, 0.0f);
 	EXPECT_POINT_INVALID(s, 5.0f);
+
+	// Test that the passthru (redundant sensor) is working
+	EXPECT_POINT_VALID(s, 2.5f, 50.0f);
+	EXPECT_NEAR(50.0f, Sensor::get(SensorType::Tps1).value_or(-1), EPS2D);
+}
+
+TEST(SensorInit, TpsValuesTooClose) {
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
+
+	// Should fail, 0.49 volts apart
+	engineConfiguration->tpsMin = 200;	// 1.00 volt
+	engineConfiguration->tpsMax = 298;	// 1.49 volts
+	EXPECT_FATAL_ERROR(initTps());
+	Sensor::resetRegistry();
+
+	// Should fail, -0.49 volts apart
+	engineConfiguration->tpsMin = 298;	// 1.49 volt
+	engineConfiguration->tpsMax = 200;	// 1.00 volts
+	EXPECT_FATAL_ERROR(initTps());
+	Sensor::resetRegistry();
+
+	// Should succeed, 0.51 volts apart
+	engineConfiguration->tpsMin = 200;	// 1.00 volt
+	engineConfiguration->tpsMax = 302;	// 1.51 volts
+	EXPECT_NO_FATAL_ERROR(initTps());
+	Sensor::resetRegistry();
+
+	// Should succeed, -0.51 volts apart
+	engineConfiguration->tpsMin = 302;	// 1.51 volt
+	engineConfiguration->tpsMax = 200;	// 1.00 volts
+	EXPECT_NO_FATAL_ERROR(initTps());
+	Sensor::resetRegistry();
+
+	// With no pin, it should be ok that they are the same
+	// Should succeed, -0.51 volts apart
+	engineConfiguration->tps1_1AdcChannel = EFI_ADC_NONE;
+	engineConfiguration->tpsMin = 200;	// 1.00 volt
+	engineConfiguration->tpsMax = 200;	// 1.00 volts
+	EXPECT_NO_FATAL_ERROR(initTps());
+	Sensor::resetRegistry();
+
+	// Test a random bogus pin index, shouldn't fail
+	engineConfiguration->tps1_1AdcChannel = static_cast<adc_channel_e>(EFI_ADC_ERROR);
+	engineConfiguration->tpsMin = 200;	// 1.00 volt
+	engineConfiguration->tpsMax = 200;	// 1.00 volt
+	EXPECT_NO_FATAL_ERROR(initTps());
+	Sensor::resetRegistry();
+
+	// de-init and re-init should also work without error
+	EXPECT_NO_FATAL_ERROR(deinitTps());
+	EXPECT_NO_FATAL_ERROR(initTps());
 }
 
 TEST(SensorInit, Pedal) {
-	WITH_ENGINE_TEST_HELPER(TEST_ENGINE);
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
 
-	CONFIG(throttlePedalPositionAdcChannel) = EFI_ADC_0;
-	CONFIG(throttlePedalUpVoltage) = 1;
-	CONFIG(throttlePedalWOTVoltage) = 4;
+	engineConfiguration->throttlePedalPositionAdcChannel = EFI_ADC_0;
+	engineConfiguration->throttlePedalUpVoltage = 1;
+	engineConfiguration->throttlePedalWOTVoltage = 4;
 
-	initTps(PASS_ENGINE_PARAMETER_SIGNATURE);
+	initTps();
 
 	// Ensure the sensors were registered
-	auto s = const_cast<Sensor*>(Sensor::getSensorOfType(SensorType::AcceleratorPedal));
+	auto s = const_cast<Sensor*>(Sensor::getSensorOfType(SensorType::AcceleratorPedalPrimary));
 	ASSERT_NE(nullptr, s);
 
 	// Test in range
@@ -68,16 +117,21 @@ TEST(SensorInit, Pedal) {
 	// Test out of range
 	EXPECT_POINT_INVALID(s, 0.0f);
 	EXPECT_POINT_INVALID(s, 5.0f);
+
+	// Test that the passthru (redundant sensor) is working
+	EXPECT_POINT_VALID(s, 2.5f, 50.0f);
+	EXPECT_NEAR(50.0f, Sensor::get(SensorType::AcceleratorPedal).value_or(-1), EPS2D);
 }
 
 TEST(SensorInit, DriverIntentNoPedal) {
-	WITH_ENGINE_TEST_HELPER(TEST_ENGINE);
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
 
 	// We have no pedal - so we should get the TPS
-	CONFIG(throttlePedalPositionAdcChannel) = EFI_ADC_NONE;
+	engineConfiguration->throttlePedalPositionAdcChannel = EFI_ADC_NONE;
 
-	initTps(PASS_ENGINE_PARAMETER_SIGNATURE);
+	initTps();
 
+	ASSERT_TRUE(Sensor::hasSensor(SensorType::Tps1));
 	// Ensure a sensor got set
 	ASSERT_TRUE(Sensor::hasSensor(SensorType::DriverThrottleIntent));
 
@@ -91,12 +145,12 @@ TEST(SensorInit, DriverIntentNoPedal) {
 
 
 TEST(SensorInit, DriverIntentWithPedal) {
-	WITH_ENGINE_TEST_HELPER(TEST_ENGINE);
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
 
 	// We have a pedal, so we should get it
-	CONFIG(throttlePedalPositionAdcChannel) = EFI_ADC_0;
+	engineConfiguration->throttlePedalPositionAdcChannel = EFI_ADC_0;
 
-	initTps(PASS_ENGINE_PARAMETER_SIGNATURE);
+	initTps();
 
 	// Ensure a sensor got set
 	ASSERT_TRUE(Sensor::hasSensor(SensorType::DriverThrottleIntent));
@@ -110,15 +164,15 @@ TEST(SensorInit, DriverIntentWithPedal) {
 }
 
 TEST(SensorInit, OilPressure) {
-	WITH_ENGINE_TEST_HELPER(TEST_ENGINE);
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
 
-	CONFIG(oilPressure.hwChannel) = EFI_ADC_0;
-	CONFIG(oilPressure.v1) = 1;
-	CONFIG(oilPressure.v2) = 4;
-	CONFIG(oilPressure.value1) = 0;
-	CONFIG(oilPressure.value2) = 1000;
+	engineConfiguration->oilPressure.hwChannel = EFI_ADC_0;
+	engineConfiguration->oilPressure.v1 = 1;
+	engineConfiguration->oilPressure.v2 = 4;
+	engineConfiguration->oilPressure.value1 = 0;
+	engineConfiguration->oilPressure.value2 = 1000;
 
-	initOilPressure(PASS_ENGINE_PARAMETER_SIGNATURE);
+	initFluidPressure();
 
 	// Ensure the sensors were registered
 	auto s = const_cast<Sensor*>(Sensor::getSensorOfType(SensorType::OilPressure));
@@ -135,12 +189,13 @@ TEST(SensorInit, OilPressure) {
 }
 
 TEST(SensorInit, Clt) {
-	WITH_ENGINE_TEST_HELPER(TEST_ENGINE);
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
 
 	// 2003 neon sensor
-	CONFIG(clt.config) = {0, 30, 100, 32500, 7550, 700, 2700};
+	engineConfiguration->clt.config = {0, 30, 100, 32500, 7550, 700, 2700};
+	engineConfiguration->clt.adcChannel = EFI_ADC_6;
 
-	initNewThermistors(PASS_ENGINE_PARAMETER_SIGNATURE);
+	initThermistors();
 
 	// Ensure the sensors were registered
 	auto s = const_cast<Sensor*>(Sensor::getSensorOfType(SensorType::Clt));
@@ -154,4 +209,33 @@ TEST(SensorInit, Clt) {
 	// Test out of range
 	EXPECT_POINT_INVALID(s, 0.0f);
 	EXPECT_POINT_INVALID(s, 5.0f);
+}
+
+TEST(SensorInit, Lambda) {
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
+
+	initLambda();
+
+	auto s = Sensor::getSensorOfType(SensorType::Lambda1);
+	ASSERT_NE(nullptr, s);
+}
+
+TEST(SensorInit, Map) {
+	EngineTestHelper eth(engine_type_e::TEST_ENGINE);
+	engineConfiguration->map.sensor.hwChannel = EFI_ADC_4;
+
+	initMap();
+
+	auto s = Sensor::getSensorOfType(SensorType::Map);
+	ASSERT_NE(nullptr, s);
+
+	Sensor::setMockValue(SensorType::MapFast, 25);
+	Sensor::setMockValue(SensorType::MapSlow, 75);
+
+	// Should prefer fast MAP
+	EXPECT_FLOAT_EQ(25, Sensor::getOrZero(SensorType::Map));
+
+	// But when that fails, should return slow MAP
+	Sensor::resetMockValue(SensorType::MapFast);
+	EXPECT_FLOAT_EQ(75, Sensor::getOrZero(SensorType::Map));
 }

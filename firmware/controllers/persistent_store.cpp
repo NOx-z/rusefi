@@ -21,22 +21,30 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "global.h"
+#include "pch.h"
+
 #if !EFI_UNIT_TEST
 #include "sensor_chart.h"
-#include "engine_configuration.h"
 #include "trigger_central.h"
-#include "engine_controller.h"
 
-persistent_config_container_s persistentState CCM_OPTIONAL;
+#ifndef PERSISTENT_LOCATION
+#define PERSISTENT_LOCATION CCM_OPTIONAL
+#else
+/* nothing */
+#endif
 
-persistent_config_s *config = &persistentState.persistentConfiguration;
+// Magic from https://stackoverflow.com/questions/1562074/how-do-i-show-the-value-of-a-define-at-compile-time
+/* definition to expand macro then apply to pragma message */
+#define VALUE_TO_STRING(x) #x
+#define VALUE(x) VALUE_TO_STRING(x)
+#define VAR_NAME_VALUE(var) #var "="  VALUE(var)
+#pragma message(VAR_NAME_VALUE(PERSISTENT_LOCATION))
 
-/**
- * todo: it really looks like these fields should become 'static', i.e. private
- * the whole 'extern ...' pattern is less then perfect, I guess the 'God object' Engine
- * would be a smaller evil. Whatever is needed should be passed into methods/modules/files as an explicit parameter.
- */
-engine_configuration_s *engineConfiguration = &persistentState.persistentConfiguration.engineConfiguration;
+persistent_config_container_s persistentState PERSISTENT_LOCATION;
+
+#else // EFI_UNIT_TEST
+
+persistent_config_s * config;
+engine_configuration_s * engineConfiguration;
 
 #endif /* EFI_UNIT_TEST */

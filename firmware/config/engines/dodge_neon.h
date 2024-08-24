@@ -9,12 +9,6 @@
 #pragma once
 #include "engine_configuration.h"
 
-void setDodgeNeon1995EngineConfiguration(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+void setDodgeNeon1995EngineConfiguration();
 
-void setDodgeNeonNGCEngineConfiguration(DECLARE_CONFIG_PARAMETER_SIGNATURE);
-
-/**
- * testing or broken CAM sensor option
- */
-void setDodgeNeonNGCEngineConfigurationCrankBased(DECLARE_CONFIG_PARAMETER_SIGNATURE);
-
+void setDodgeNeonNGCEngineConfiguration();

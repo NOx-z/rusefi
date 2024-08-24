@@ -1,6 +1,6 @@
 /**
  * @file obd_error_codes.h
- * @brief Standart OBD-II error codes
+ * @brief Standard and custom OBD-II error codes
  *
  * More info at http://www.obd-codes.com/faq/obd2-codes-explained.php
  *
@@ -10,18 +10,10 @@
 
 #pragma once
 
-// this header should not depend on anything - actually chconf.h usually depends on this header
+#include <cstdint>
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif /* __cplusplus */
-
-// for now I want most enums to be 32 bit integers. At some point maybe we will make the one-byte
-// this is about offsets and sizes in TunerStudio
-#define ENUM_32_BITS 2000000000
-
-typedef enum {
+enum class ObdCode : uint16_t {
+	None = 0,
 //P0001 Fuel Volume Regulator Control Circuit/Open
 //P0002 Fuel Volume Regulator Control Circuit Range/Performance
 //P0003 Fuel Volume Regulator Control Circuit Low
@@ -116,7 +108,7 @@ typedef enum {
 	//P0087 Fuel Rail/System Pressure - Too Low
 	//P0088 Fuel Rail/System Pressure - Too High
 	//P0089 Fuel Pressure Regulator 1 Performance
-	//P0090 Fuel Pressure Regulator 1 Control Circuit
+	OBD_Fuel_Pressure_Sensor_Missing = 90,
 	//P0091 Fuel Pressure Regulator 1 Control Circuit Low
 	//P0092 Fuel Pressure Regulator 1 Control Circuit High
 	//P0093 Fuel System Leak Detected - Large Leak
@@ -133,30 +125,39 @@ typedef enum {
 	//P0104 Mass or Volume Air Flow Circuit Intermittent
 	OBD_Manifold_Absolute_Pressure_Circuit_Malfunction = 105,
 	//P0106 Manifold Absolute Pressure/Barometric Pressure Circuit Range/Performance Problem
+
+	OBD_Map_Timeout = 106,
+	OBD_Map_Low = 107,
+	OBD_Map_High = 108,
+
 	//P0107 Manifold Absolute Pressure/Barometric Pressure Circuit Low Input
 	//P0108 Manifold Absolute Pressure/Barometric Pressure Circuit High Input
 	//P0109 Manifold Absolute Pressure/Barometric Pressure Circuit Intermittent
-	/**
-	 * We raise intake error code if IAT is calculated below -50C or above +100C
-	 */
-	OBD_Intake_Air_Temperature_Circuit_Malfunction = 110,
+
+	OBD_ThermistorConfig = 111,
+
+	OBD_Iat_Timeout = 110,
+	OBD_Iat_Low = 112,
+	OBD_Iat_High = 113,
+
 	//P0111 Intake Air Temperature Circuit Range/Performance Problem
 	//P0112 Intake Air Temperature Circuit Low Input
 	//P0113 Intake Air Temperature Circuit High Input
 	//P0114 Intake Air Temperature Circuit Intermittent
-	OBD_Engine_Coolant_Temperature_Circuit_Malfunction = 115,
+	OBD_Clt_Timeout = 115,
+	OBD_Clt_Low = 117,
+	OBD_Clt_High = 118,
 	//P0116 Engine Coolant Temperature Circuit Range/Performance Problem
 	//P0117 Engine Coolant Temperature Circuit Low Input
 	//P0118 Engine Coolant Temperature Circuit High Input
 	//P0119 Engine Coolant Temperature Circuit Intermittent
-	/**
-	 * See also tpsErrorDetectionTooLow
-	 */
-	OBD_Throttle_Position_Sensor_Circuit_Malfunction = 120,
-	/**
-	 * See also tpsErrorDetectionTooHigh
-	 */
-	OBD_Throttle_Position_Sensor_Range_Performance_Problem = 121,
+
+	OBD_TPS_Configuration = 121,
+
+	OBD_TPS1_Primary_Timeout = 120,
+	OBD_TPS1_Primary_Low = 122,
+	OBD_TPS1_Primary_High = 123,
+
 	//P0122 Throttle Position Sensor/Switch A Circuit Low Input
 	//P0123 Throttle Position Sensor/Switch A Circuit High Input
 	//P0124 Throttle Position Sensor/Switch A Circuit Intermittent
@@ -205,6 +206,11 @@ typedef enum {
 	//P0173 Fuel Trim Malfunction (Bank 2)
 	//P0174 System too Lean (Bank 2)
 	//P0175 System too Rich (Bank 2)
+
+	OBD_FlexSensor_Timeout = 176,
+	OBD_FlexSensor_Low = 178,
+	OBD_FlexSensor_High = 179,
+
 	//P0176 Fuel Composition Sensor Circuit Malfunction
 	//P0177 Fuel Composition Sensor Circuit Range/Performance
 	//P0178 Fuel Composition Sensor Circuit Low Input
@@ -231,18 +237,18 @@ typedef enum {
 	//P0199 Engine Oil Temperature Sensor Intermittent
 	//DTC Codes - P0200-P0299 - Fuel and Air Metering (Injector Circuit)
 	//P0200 Injector Circuit Malfunction
-	//P0201 Injector Circuit Malfunction - Cylinder 1
-	//P0202 Injector Circuit Malfunction - Cylinder 2
-	//P0203 Injector Circuit Malfunction - Cylinder 3
-	//P0204 Injector Circuit Malfunction - Cylinder 4
-	//P0205 Injector Circuit Malfunction - Cylinder 5
-	//P0206 Injector Circuit Malfunction - Cylinder 6
-	//P0207 Injector Circuit Malfunction - Cylinder 7
-	//P0208 Injector Circuit Malfunction - Cylinder 8
-	//P0209 Injector Circuit Malfunction - Cylinder 9
-	//P0210 Injector Circuit Malfunction - Cylinder 10
-	//P0211 Injector Circuit Malfunction - Cylinder 11
-	//P0212 Injector Circuit Malfunction - Cylinder 12
+	OBD_Injector_Circuit_1 = 201,
+	OBD_Injector_Circuit_2 = 202,
+	OBD_Injector_Circuit_3 = 203,
+	OBD_Injector_Circuit_4 = 204,
+	OBD_Injector_Circuit_5 = 205,
+	OBD_Injector_Circuit_6 = 206,
+	OBD_Injector_Circuit_7 = 207,
+	OBD_Injector_Circuit_8 = 208,
+	OBD_Injector_Circuit_9 = 209,
+	OBD_Injector_Circuit_10 = 210,
+	OBD_Injector_Circuit_11 = 211,
+	OBD_Injector_Circuit_12 = 212,
 	//P0213 Cold Start Injector 1 Malfunction
 	//P0214 Cold Start Injector 2 Malfunction
 	//P0215 Engine Shutoff Solenoid Malfunction
@@ -252,6 +258,15 @@ typedef enum {
 	//P0219 Engine Overspeed Condition
 	//P0220 Throttle/Petal Position Sensor/Switch B Circuit Malfunction
 	//P0221 Throttle/Petal Position Sensor/Switch B Circuit Range/Performance Problem
+
+	OBD_TPS1_Secondary_Timeout = 220,
+	OBD_TPS1_Secondary_Low = 222,
+	OBD_TPS1_Secondary_High = 223,
+
+	OBD_TPS2_Primary_Timeout = 225,
+	OBD_TPS2_Primary_Low = 227,
+	OBD_TPS2_Primary_High = 228,
+
 	//P0222 Throttle/Petal Position Sensor/Switch B Circuit Low Input
 	//P0223 Throttle/Petal Position Sensor/Switch B Circuit High Input
 	//P0224 Throttle/Petal Position Sensor/Switch B Circuit Intermittent
@@ -292,7 +307,9 @@ typedef enum {
 	//P0259 Injection Pump Fuel Metering Control "B" High (Cam/R
 	//P0260 Injection Pump Fuel Metering Control "B" Intermittent Injector)
 	//P0261 Cylinder I Injector Circuit Low
+	OBD_Injector_Circuit_1_Low = 261,
 	//P0262 Cylinder I Injector Circuit High
+	OBD_Injector_Circuit_1_High = 262,
 	//P0263 Cylinder I Contribution/Balance Fault
 	//P0264 Cylinder 2 Injector Circuit Low
 	//P0265 Cylinder 2 Injector Circuit High
@@ -371,7 +388,7 @@ typedef enum {
 	//P0338 Crankshaft Position Sensor A Circuit High Input
 	//P0339 Crankshaft Position Sensor A Circuit Intermittent
 	//P0340 Camshaft Position Sensor Circuit Malfunction
-	 OBD_Camshaft_Position_Sensor_Circuit_Range_Performance = 341,
+	OBD_Camshaft_Position_Sensor_Circuit_Range_Performance = 341,
 	//P0342 Camshaft Position Sensor Circuit Low Input
 	//P0343 Camshaft Position Sensor Circuit High Input
 	//P0344 Camshaft Position Sensor Circuit Intermittent
@@ -381,18 +398,18 @@ typedef enum {
 	//P0348 Camshaft Position Sensor A Circuit High Input (Bank 2)
 	//P0349 Camshaft Position Sensor A Circuit Intermittent (Bank 2)
 	//P0350 Ignition Coil Primary/Secondary Circuit Malfunction
-	//P0351 Ignition Coil A Primary/Secondary Circuit Malfunction
-	//P0352 Ignition Coil B Primary/Secondary Circuit Malfunction
-	//P0353 Ignition Coil C Primary/Secondary Circuit Malfunction
-	//P0354 Ignition Coil D Primary/Secondary Circuit Malfunction
-	//P0355 Ignition Coil E Primary/Secondary Circuit Malfunction
-	//P0356 Ignition Coil F Primary/Secondary Circuit Malfunction
-	//P0357 Ignition Coil G Primary/Secondary Circuit Malfunction
-	//P0358 Ignition Coil H Primary/Secondary Circuit Malfunction
-	//P0359 Ignition Coil I Primary/Secondary Circuit Malfunction
-	//P0360 Ignition Coil J Primary/Secondary Circuit Malfunction
-	//P0361 Ignition Coil K Primary/Secondary Circuit Malfunction
-	//P0362 Ignition Coil L Primary/Secondary Circuit Malfunction
+	OBD_Ignition_Circuit_1 = 351,
+	OBD_Ignition_Circuit_2 = 352,
+	OBD_Ignition_Circuit_3 = 353,
+	OBD_Ignition_Circuit_4 = 354,
+	OBD_Ignition_Circuit_5 = 355,
+	OBD_Ignition_Circuit_6 = 356,
+	OBD_Ignition_Circuit_7 = 357,
+	OBD_Ignition_Circuit_8 = 358,
+	OBD_Ignition_Circuit_9 = 359,
+	OBD_Ignition_Circuit_10 = 360,
+	OBD_Ignition_Circuit_11 = 361,
+	OBD_Ignition_Circuit_12 = 362,
 	//P0363 Misfire Detected - Fueling Disabled
 	//P0364 Reserved
 	//P0365 Camshaft Position Sensor "B" Circuit (Bank 1)
@@ -1048,6 +1065,19 @@ typedef enum {
 	//P2117 Throttle/Pedal Pos Sensor F Minimum Stop Perf
 	//P2118 Throttle Actuator Ctrl Motor Current Range/Perf
 	//P2119 Throttle Actuator Ctrl Throttle Body Range/Perf
+
+	OBD_TPS2_Secondary_Timeout = 2120,
+	OBD_TPS2_Secondary_Low = 2122,
+	OBD_TPS2_Secondary_High = 2123,
+
+	OBD_PPS_Primary_Timeout = 2125,
+	OBD_PPS_Primary_Low = 2127,
+	OBD_PPS_Primary_High = 2128,
+
+	OBD_PPS_Secondary_Timeout = 2130,
+	OBD_PPS_Secondary_Low = 2132,
+	OBD_PPS_Secondary_High = 2133,
+
 	//P2120 Throttle/Pedal Pos Sensor/Switch D Circ
 	//P2121 Throttle/Pedal Pos Sensor/Switch D Circ Range/Perf
 	//P2122 Throttle/Pedal Pos Sensor/Switch D Circ Low Input
@@ -1063,6 +1093,9 @@ typedef enum {
 	//P2132 Throttle/Pedal Pos Sensor/Switch F Circ Low Input
 	//P2133 Throttle/Pedal Pos Sensor/Switch F Circ High Input
 	//P2134 Throttle/Pedal Pos Sensor/Switch F Circ Interm
+	OBD_TPS1_Correlation = 2135,
+	OBD_TPS2_Correlation = 2136,
+	OBD_PPS_Correlation = 2137,
 	//P2135 Throttle/Pedal Pos Sensor/Switch A / B Voltage Correlation
 	//P2136 Throttle/Pedal Pos Sensor/Switch A / C Voltage Correlation
 	//P2137 Throttle/Pedal Pos Sensor/Switch B / C Voltage Correlation
@@ -1086,6 +1119,7 @@ typedef enum {
 	//P2155 Fuel Injector Group D Supply Voltage Circ/Open
 	//P2156 Fuel Injector Group D Supply Voltage Circ Low
 	//P2157 Fuel Injector Group D Supply Voltage Circ High
+	OBD_Vehicle_Speed_SensorB = 2158,
 	//P2158 Vehicle Speed SensorB
 	//P2159 Vehicle Speed SensorB Range/Perf
 	//P2160 Vehicle Speed SensorB Circ Low
@@ -1159,7 +1193,7 @@ typedef enum {
 	//P2228 Barometric Press Circ Low
 	//P2229 Barometric Press Circ High
 	//P2230 Barometric Press Circ Interm
-	//P2231 O2 Sensor Signal Circ Shorted to Heater Circ Bank1 Sensor 1
+	OBD_WB_FW_Mismatch = 2133, // actually: P2231 O2 Sensor Signal Circ Shorted to Heater Circ Bank1 Sensor 1
 	//P2232 O2 Sensor Signal Circ Shorted to Heater Circ Bank1 Sensor 2
 	//P2233 O2 Sensor Signal Circ Shorted to Heater Circ Bank1 Sensor 3
 	//P2234 O2 Sensor Signal Circ Shorted to Heater Circ Bank2 Sensor 1
@@ -1575,6 +1609,8 @@ typedef enum {
 	//P2793 Gear Shift Direction Circ
 	//P2794 Gear Shift Direction Circ Low
 	//P2795 Gear Shift Direction Circ High
+	Wideband_1_Fault = 2900,
+	Wideband_2_Fault = 2901,
 	//P2A00 O2 Sensor Circ Range/Perf Bank1 Sensor 1
 	//P2A01 O2 Sensor Circ Range/Perf Bank1 Sensor 2
 	//P2A02 O2 Sensor Circ Range/Perf Bank1 Sensor 3
@@ -1682,18 +1718,18 @@ typedef enum {
 	CUSTOM_NAN_ENGINE_LOAD_2 = 6002,
 	CUSTOM_OBD_6003 = 6003,
 	CUSTOM_OBD_6004 = 6004,
-	CUSTOM_EMPTY_FSIO_STACK = 6005,
-	CUSTOM_UNKNOWN_FSIO = 6006,
-	CUSTOM_NO_FSIO = 6007,
-	CUSTOM_FSIO_STACK_SIZE = 6008,
-	CUSTOM_FSIO_UNEXPECTED = 6009,
+	CUSTOM_6005 = 6005,
+	CUSTOM_6006 = 6006,
+	CUSTOM_6007 = 6007,
+	CUSTOM_6008 = 6008,
+	CUSTOM_6009 = 6009,
 
-	CUSTOM_FSIO_PARSING = 6010,
-	CUSTOM_FSIO_INVALID_EXPRESSION = 6011,
-	CUSTOM_INTEPOLATE_ERROR = 6012,
-	CUSTOM_INTEPOLATE_ERROR_2 = 6013,
-	CUSTOM_INTEPOLATE_ERROR_3 = 6014,
-	CUSTOM_INTEPOLATE_ERROR_4 = 6015,
+	CUSTOM_6010 = 6010,
+	CUSTOM_6011 = 6011,
+	CUSTOM_ERR_INTERPOLATE_1 = 6012,
+	CUSTOM_ERR_INTERPOLATE_2 = 6013,
+	CUSTOM_ERR_INTERPOLATE_3 = 6014,
+	CUSTOM_ERR_INTERPOLATE_4 = 6015,
 	CUSTOM_PARAM_RANGE = 6016,
 	CUSTOM_MAF_NEEDED = 6017,
 	CUSTOM_UNKNOWN_ALGORITHM = 6018,
@@ -1701,7 +1737,7 @@ typedef enum {
 
 	CUSTOM_OBD_INJECTION_NO_PIN_ASSIGNED = 6020,
 	CUSTOM_OBD_UNEXPECTED_INJECTION_MODE = 6021,
-	CUSTOM_OBD_ANGLE_CONSTRAINT_VIOLATION = 6022,
+	CUSTOM_6022 = 6022,
 	CUSTOM_OBD_UNKNOWN_FIRING_ORDER = 6023,
 	CUSTOM_OBD_WRONG_FIRING_ORDER = 6024,
 	CUSTOM_OBD_IGNITION_MODE = 6025,
@@ -1714,10 +1750,7 @@ typedef enum {
 	CUSTOM_ZERO_DWELL = 6032,
 	CUSTOM_DWELL_TOO_LONG = 6033,
 	CUSTOM_SKIPPING_STROKE = 6034,
-	CUSTOM_OBD_TRG_DECODING = 6035,
-	// todo: looks like following two errors always happen together, it's just timing affects which one is published?
-	CUSTOM_SYNC_ERROR = 6036,
-	CUSTOM_SYNC_COUNT_MISMATCH = 6037,
+	CUSTOM_6037 = 6037,
 	/**
 	 * This error happens if some pinout configuration changes were applied but ECU was not reset afterwards.
 	 */
@@ -1727,25 +1760,22 @@ typedef enum {
 	CUSTOM_OBD_6040 = 6040,
 	CUSTOM_OBD_KNOCK_PROCESSOR = 6041,
 	CUSTOM_OBD_LOCAL_FREEZE = 6042,
-	CUSTOM_OBD_MMC_ERROR = 6043,
+	CUSTOM_6043 = 6043,
 	CUSTOM_LOGGING_BUFFER_OVERFLOW = 6044,
-	/**
-	 * This is not engine miss detection - this is only internal scheduler state validation
-	 * Should not happen
-	 */
-	CUSTOM_OBD_SKIPPED_SPARK = 6045,
+	CUSTOM_OBD_6045 = 6045,
+	CUSTOM_OBD_6046 = 6046,
 	CUSTOM_OBD_6047 = 6047,
 	CUSTOM_OBD_PIN_CONFLICT = 6048,
 	CUSTOM_OBD_LOW_FREQUENCY = 6049,
 
-	CUSTOM_OBD_ZERO_CYLINDER_COUNT = 6051,
+	CUSTOM_6051 = 6051,
 	CUSTOM_OBD_TS_PAGE_MISMATCH = 6052,
 	CUSTOM_OBD_TS_OUTPUT_MISMATCH = 6053,
 	CUSTOM_TOO_LONG_CRANKING_FUEL_INJECTION = 6054,
 	CUSTOM_INTERPOLATE_NAN = 6055,
 	ERROR_HISTO_NAME = 6056,
 	CUSTOM_AUX_OUT_OF_ORDER = 6057,
-	CUSTOM_OBD_58 = 6058,
+	CUSTOM_OBD_HIGH_FREQUENCY = 6058,
 	CUSTOM_OBD_59 = 6059,
 
 	CUSTOM_OBD_MMC_START1 = 6060,
@@ -1787,7 +1817,7 @@ typedef enum {
 	CUSTOM_OBD_94 = 6094,
 	CUSTOM_OBD_95 = 6095,
 	CUSTOM_OBD_96 = 6096,
-	CUSTOM_OBD_97 = 6097,
+	CUSTOM_PID_DTERM = 6097,
 	CUSTOM_DWELL = 6098,
 	CUSTOM_TS_OVERFLOW = 6099,
 
@@ -1813,7 +1843,7 @@ typedef enum {
 	CUSTOM_ERR_DWELL_DURATION = 6118,
 	CUSTOM_ERR_NO_SHAPE = 6119,
 
-	CUSTOM_ERR_SGTP_ARGUMENT = 6121,
+	CUSTOM_ERR_6121 = 6121,
 	CUSTOM_ERR_6122 = 6122,
 	CUSTOM_ERR_6123 = 6123,
 	CUSTOM_ERR_6124 = 6124,
@@ -1824,11 +1854,11 @@ typedef enum {
 	CUSTOM_ERR_6129 = 6129,
 
 	CUSTOM_ERR_INVALID_PIN = 6130,
-	CUSTOM_ERR_PIN_REPO = 6131,
+	CUSTOM_ERR_6131 = 6131,
 	CUSTOM_ERR_UNKNOWN_PORT = 6132,
 	CUSTOM_ERR_PIN_ALREADY_USED_1 = 6133,
 	CUSTOM_ERR_PIN_ALREADY_USED_2 = 6134,
-	CUSTOM_ERR_ICU_STATE = 6135,
+	CUSTOM_ERR_6135 = 6135,
 	CUSTOM_ERR_TCHARGE_NOT_READY = 6136,
 	CUSTOM_ERR_TRIGGER_WAVEFORM_TOO_LONG = 6137,
 	CUSTOM_ERR_FUEL_TABLE_NOT_READY = 6138,
@@ -1847,7 +1877,7 @@ typedef enum {
 	CUSTOM_ERR_ASSERT = 6500,
 	CUSTOM_ERR_ASSERT_VOID = 6501,
 	ERROR_FL_STACK_OVERFLOW = 6502,
-	CUSTOM_ERR_FSIO_POOL = 6503,
+	CUSTOM_6503 = 6503,
 	CUSTOM_FLSTACK = 6504,
 	CUSTOM_ERR_NAN_TCHARGE = 6505,
 	CUSTOM_EGO_TYPE = 6506,
@@ -1864,14 +1894,14 @@ typedef enum {
 	CUSTOM_ERR_ADC_USED = 6517,
 	CUSTOM_ERR_ADC_DEPTH_SLOW = 6518,
 	CUSTOM_ERR_ADC_DEPTH_FAST = 6519,
-	CUSTOM_ERR_ICU = 6520,
-	CUSTOM_ERR_ICU_AF = 6521,
-	CUSTOM_ERR_ICU_DRIVER = 6522,
-	CUSTOM_ERR_ICU_PIN = 6523,
+	CUSTOM_ERR_6520 = 6520,
+	CUSTOM_ERR_6521 = 6521,
+	CUSTOM_ERR_6522 = 6522,
+	CUSTOM_ERR_6523 = 6523,
 	CUSTOM_ERR_UNEXPECTED_SPI = 6524,
 	CUSTOM_ERR_EXT_MODE = 6525,
 	CUSTOM_ERR_TIMER_OVERFLOW = 6526,
-	CUSTOM_ERR_NULL_TIMER_CALLBACK = 6527,
+	CUSTOM_ERR_6527 = 6527,
 	CUSTOM_ERR_SCHEDULING_ERROR = 6528,
 	CUSTOM_ERR_LOGGING_NOT_READY = 6529,
 	ERROR_NAN_FIND_INDEX = 6530,
@@ -1913,7 +1943,7 @@ typedef enum {
 	CUSTOM_ERR_6563 = 6563,
 	CUSTOM_ERR_6564 = 6564,
 	CUSTOM_ERR_6565 = 6565,
-	CUSTOM_ERR_6566 = 6566,
+	CUSTOM_ERR_CYL_ANGLE = 6566,
 	CUSTOM_ERR_6567 = 6567,
 	CUSTOM_ERR_6568 = 6568,
 	CUSTOM_ERR_6569 = 6569,
@@ -1951,7 +1981,7 @@ typedef enum {
 	CUSTOM_ERR_6598 = 6598,
 	CUSTOM_ERR_6599 = 6599,
 
-	CUSTOM_ENGINE_REF = 6600,
+	CUSTOM_ERR_6600 = 6600,
 	CUSTOM_CONSOLE_TOO_MANY = 6601,
 	CUSTOM_APPEND_NULL = 6602,
 	CUSTOM_ERR_6603 = 6603,
@@ -1959,8 +1989,8 @@ typedef enum {
 	CUSTOM_ERR_6605 = 6605,
 	CUSTOM_ERR_6606 = 6606,
 	CUSTOM_APPEND_STACK = 6607,
-	CUSTOM_RM_STACK_1 = 6608,
-	CUSTOM_RM_STACK = 6609,
+	CUSTOM_ERR_6608 = 6608,
+	CUSTOM_ERR_6609 = 6609,
 
 	CUSTOM_ERR_6610 = 6610,
 	CUSTOM_ERR_6611 = 6611,
@@ -1984,7 +2014,7 @@ typedef enum {
 	CUSTOM_ERR_6628 = 6628,
 	CUSTOM_STACK_6629 = 6629,
 
-	CUSTOM_IGN_MATH_STATE = 6630,
+	CUSTOM_ERR_6030 = 6630,
 	CUSTOM_ERR_6631 = 6631,
 	CUSTOM_ERR_6632 = 6632,
 	CUSTOM_ANGLE_NAN = 6633,
@@ -2030,25 +2060,25 @@ typedef enum {
 
 	CUSTOM_ERR_6670 = 6670,
 	CUSTOM_STACK_ADC_6671 = 6671,
-	CUSTOM_ICU_DRIVER = 6672,
-	CUSTOM_ICU_DRIVER_STATE = 6673,
+	CUSTOM_ERR_6672 = 6672,
+	CUSTOM_ERR_6673 = 6673,
 	CUSTOM_STACK_SPI = 6674,
-	CUSTOM_ERR_6675 = 6675,
-	CUSTOM_ERR_6676 = 6676,
+	CUSTOM_VVT_SYNC_POSITION = 6675,
+	CUSTOM_STACK_ADC = 6676,
 	CUSTOM_IH_STACK = 6677,
-	CUSTOM_EC_NULL = 6678,
-	CUSTOM_ERR_6679 = 6679,
+	CUSTOM_ERR_6678 = 6678,
+	CUSTOM_ERR6679 = 6679,
 
-	CUSTOM_ERR_6680 = 6680,
-	CUSTOM_ERR_6681 = 6681,
-	CUSTOM_ERR_6682 = 6682,
+	CUSTOM_ERR_ANGLE_CR = 6680,
+	CUSTOM_DELTA_NOT_POSITIVE = 6681,
+	CUSTOM_TIMER_WATCHDOG = 6682,
 	CUSTOM_SAME_TWICE = 6683,
 	CUSTOM_ERR_6684 = 6684,
 	CUSTOM_ERR_6685 = 6685,
 	CUSTOM_ERR_6686 = 6686,
-	CUSTOM_ERR_6687 = 6687,
-	CUSTOM_ERR_6688 = 6688,
-	CUSTOM_SPARK_ANGLE_9 = 6689,
+	CUSTOM_FIRING_LENGTH = 6687,
+	CUSTOM_ADVANCE_SPARK = 6688,
+	CUSTOM_ERR_6689 = 6689,
 
 	CUSTOM_ERR_MAP_START_ASSERT = 6690,
 	CUSTOM_ERR_MAP_AVG_OFFSET = 6691,
@@ -2060,12 +2090,12 @@ typedef enum {
 	CUSTOM_PWM_CYCLE_START = 6697,
 	CUSTOM_ERR_ARRAY_IS_FULL = 6698,
 	CUSTOM_ERR_ARRAY_REMOVE_ERROR = 6699,
-	CUSTOM_ERR_INVALID_INPUT_ICU_PIN = 6700,
+	CUSTOM_ERR_6700 = 6700,
 
 	CUSTOM_CJ125_0 = 6700,
 	CUSTOM_CJ125_1 = 6701,
 	CUSTOM_CJ125_2 = 6702,
-	CUSTOM_ERR_6703 = 6703,
+	CUSTOM_ERR_BENCH_PARAM = 6703,
 	CUSTOM_ERR_BOTH_FRONTS_REQUIRED = 6704,
 	CUSTOM_TLE8888 = 6705,
 	CUSTOM_KNOCK_WINDOW = 6706,
@@ -2073,31 +2103,62 @@ typedef enum {
 	CUSTOM_ERR_TIMER_TEST_CALLBACK_WRONG_TIME = 6708,
 	CUSTOM_ERR_6709 = 6709,
 	CUSTOM_DUTY_INVALID = 6710,
-	CUSTOM_DUTY_TOO_HIGH = 6711,
+	CUSTOM_PWM_DUTY_TOO_HIGH = 6711,
 	CUSTOM_ERR_PWM_STATE_ASSERT = 6712,
 	CUSTOM_ERR_PWM_CALLBACK_ASSERT = 6713,
 	CUSTOM_ERR_PWM_SWITCH_ASSERT = 6714,
 
+	CUSTOM_ERR_ZERO_E0_MULT = 6715,
+	CUSTOM_ERR_ZERO_E85_MULT = 6716,
 
 	CUSTOM_INVALID_ADC = 6720,
 	CUSTOM_INVALID_MODE_SETTING = 6721,
 	CUSTOM_ERR_TASK_TIMER_OVERFLOW = 6722,
-	CUSTOM_ERR_6723 = 6723,
-	CUSTOM_ERR_6724 = 6724,
-	CUSTOM_ERR_6725 = 6725,
-	CUSTOM_ERR_6726 = 6726,
-	CUSTOM_ERR_6727 = 6727,
+	CUSTOM_NO_ETB_FOR_IDLE = 6723,
+	CUSTOM_ERR_TLE8888_RESPONSE = 6724,
+	CUSTOM_ERR_CJ125_DIAG = 6725,
+	CUSTOM_6726 = 6726,
+	CUSTOM_VVT_MODE_NOT_SELECTED = 6727,
 	CUSTOM_ERR_6728 = 6728,
-	CUSTOM_ERR_6729 = 6729,
+	CUSTOM_ARTIFICIAL_MISFIRE = 6729,
 
+	CUSTOM_INSTANT_MAP_DECODING = 6899,
+	STACK_USAGE_COMMUNICATION = 6900,
+	STACK_USAGE_MIL = 6901,
+	CUSTOM_6902 = 6902,
+	STACK_USAGE_STATUS = 6903,
+	STACK_USAGE_MISC = 6904,
 
+	// 8000-8050 logging errors
+	CUSTOM_OBD_MMC_ERROR = 8000,
+
+	CUSTOM_ERR_CAN_COMMUNICATION = 8900,
+
+	WATCH_DOG_SECONDS = 8901,
+
+	CUSTOM_ERR_CUSTOM_GAPS_BAD = 8999,
 	CUSTOM_ERR_TRIGGER_SYNC = 9000,
 	CUSTOM_OBD_TRIGGER_WAVEFORM = 9001,
+
+	CUSTOM_PRIMARY_TOO_MANY_TEETH = 9002,
+	CUSTOM_PRIMARY_NOT_ENOUGH_TEETH = 9003,
+
+	CUSTOM_CAM_TOO_MANY_TEETH = 9004,
+	CUSTOM_CAM_NOT_ENOUGH_TEETH = 9005,
+
+	// Where we expected one trigger edge, we got two in quick succession
+	CUSTOM_PRIMARY_DOUBLED_EDGE = 9006,
+
+	// A trigger tooth arrived at an unexpected time
+	CUSTOM_PRIMARY_BAD_TOOTH_TIMING = 9007,
+
 	/**
 	 * This is not engine miss detection - this is only internal scheduler state validation
 	 * Should not happen
 	 */
-	CUSTOM_OBD_SKIPPED_FUEL = 9010,
+	CUSTOM_OBD_SKIPPED_SPARK = 9009,
+
+	// not used CUSTOM_9010 = 9010,
 	CUSTOM_RE_ADDING_INTO_EXECUTION_QUEUE = 9011,
 	/**
 	 * This indicates an issue with coil control - pin was not high when we were trying to set it low.
@@ -2107,13 +2168,8 @@ typedef enum {
 	 * Commanded fuel exceeds your fuel injector flow
 	 */
 	CUSTOM_TOO_LONG_FUEL_INJECTION = 9013,
-
-
-	// this is needed for proper enum size, this matters for malfunction_central
-	Internal_ForceMyEnumIntSize_cranking_obd_code = ENUM_32_BITS,
-} obd_code_e;
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
+	/**
+	 * GPIO chip errors
+	 */
+	CUSTOM_GPIO_CHIP_FAILED_PWM = 9014,
+};

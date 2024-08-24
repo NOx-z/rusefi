@@ -8,32 +8,111 @@
 
 #pragma once
 
-#include "engine.h"
-#include "periodic_task.h"
+#include "engine_module.h"
+#include "rusefi_types.h"
+#include "efi_pid.h"
+#include "sensor.h"
+#include "idle_state_generated.h"
 
-class IdleController : public PeriodicTimerController {
-public:
-	DECLARE_ENGINE_PTR;
+struct IIdleController {
+	enum class Phase : uint8_t {
+		Cranking,	// Below cranking threshold
+		Idling,		// Below idle RPM, off throttle
+		Coasting,	// Off throttle but above idle RPM
+		CrankToIdleTaper, // Taper between cranking and idling
+		Running,	// On throttle
+	};
 
-	int getPeriodMs() override;
-	void PeriodicTask() override;
+	virtual Phase determinePhase(int rpm, int targetRpm, SensorResult tps, float vss, float crankingTaperFraction) = 0;
+	virtual int getTargetRpm(float clt) = 0;
+	virtual float getCrankingOpenLoop(float clt) const = 0;
+	virtual float getRunningOpenLoop(IIdleController::Phase phase, float rpm, float clt, SensorResult tps) = 0;
+	virtual float getOpenLoop(Phase phase, float rpm, float clt, SensorResult tps, float crankingTaperFraction) = 0;
+	virtual float getClosedLoop(Phase phase, float tps, int rpm, int target) = 0;
+	virtual float getCrankingTaperFraction() const = 0;
+	virtual bool isIdlingOrTaper() const = 0;
+	virtual float getIdleTimingAdjustment(int rpm) = 0;
 };
 
-percent_t getIdlePosition(void);
-void setIdleValvePosition(int positionPercent);
-void startIdleThread(Logging*sharedLogger DECLARE_ENGINE_PARAMETER_SUFFIX);
-void setDefaultIdleParameters(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+class IdleController : public IIdleController, public EngineModule, public idle_state_s {
+public:
+	// Mockable<> interface
+	using interface_t = IIdleController;
+
+	void init();
+
+	float getIdlePosition(float rpm);
+
+	// TARGET DETERMINATION
+	int getTargetRpm(float clt) override;
+
+	// PHASE DETERMINATION: what is the driver trying to do right now?
+	Phase determinePhase(int rpm, int targetRpm, SensorResult tps, float vss, float crankingTaperFraction) override;
+	float getCrankingTaperFraction() const override;
+
+	// OPEN LOOP CORRECTIONS
+	percent_t getCrankingOpenLoop(float clt) const override;
+	percent_t getRunningOpenLoop(IIdleController::Phase phase, float rpm, float clt, SensorResult tps) override;
+	percent_t getOpenLoop(Phase phase, float rpm, float clt, SensorResult tps, float crankingTaperFraction) override;
+
+	float getIdleTimingAdjustment(int rpm) override;
+	float getIdleTimingAdjustment(int rpm, int targetRpm, Phase phase);
+
+	// CLOSED LOOP CORRECTION
+	float getClosedLoop(IIdleController::Phase phase, float tpsPos, int rpm, int targetRpm) override;
+
+	void onConfigurationChange(engine_configuration_s const * previousConfig) final;
+	void onSlowCallback() final;
+
+	// Allow querying state from outside
+	bool isIdlingOrTaper() const override {
+		return m_lastPhase == Phase::Idling || (engineConfiguration->useSeparateIdleTablesForCrankingTaper && m_lastPhase == Phase::CrankToIdleTaper);
+	}
+
+	PidIndustrial industrialWithOverrideIdlePid;
+
+	#if EFI_IDLE_PID_CIC
+	// Use PID with CIC integrator
+		PidCic idleCicPid;
+	#endif //EFI_IDLE_PID_CIC
+
+	Pid * getIdlePid() {
+	#if EFI_IDLE_PID_CIC
+		if (engineConfiguration->useCicPidForIdle) {
+			return &idleCicPid;
+		}
+	#endif /* EFI_IDLE_PID_CIC */
+		return &industrialWithOverrideIdlePid;
+	}
+
+
+private:
+
+	// These are stored by getIdlePosition() and used by getIdleTimingAdjustment()
+	Phase m_lastPhase = Phase::Cranking;
+	int m_lastTargetRpm = 0;
+	efitimeus_t restoreAfterPidResetTimeUs = 0;
+	// used by 'dashpot' (hold+decay) logic for iacByTpsTaper
+	efitimeus_t lastTimeRunningUs = 0;
+	// used by "soft" idle entry
+	float m_crankTaperEndTime = 0.0f;
+	float m_idleTimingSoftEntryEndTime = 0.0f;
+
+	// This is stored by getClosedLoop and used in case we want to "do nothing"
+	float m_lastAutomaticPosition = 0;
+
+	Pid m_timingPid;
+};
+
+percent_t getIdlePosition();
+
+void applyIACposition(percent_t position);
+void setManualIdleValvePosition(int positionPercent);
+
+void startIdleThread();
+void setDefaultIdleParameters();
 void startIdleBench(void);
-void setIdleDT(int value);
-void setIdleOffset(float value);
-void setIdlePFactor(float value);
-void setIdleIFactor(float value);
-void setIdleDFactor(float value);
 void setIdleMode(idle_mode_e value);
 void setTargetIdleRpm(int value);
-void setIdleDT(int value);
-void stopIdleHardware(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-void initIdleHardware(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-bool isIdleHardwareRestartNeeded();
-void onConfigurationChangeIdleCallback(engine_configuration_s *previousConfiguration);
-
+void startSwitchPins();
+void stopSwitchPins();

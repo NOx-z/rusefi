@@ -11,7 +11,7 @@
 #include "persistent_configuration.h"
 
 #ifndef DEFAULT_ENGINE_TYPE
-#define DEFAULT_ENGINE_TYPE DEFAULT_FRANKENSO
+#define DEFAULT_ENGINE_TYPE engine_type_e::MINIMAL_PINS
 #endif
 
 #define CLT_MANUAL_IDLE_CORRECTION config->cltIdleCorrBins, config->cltIdleCorr, CLT_CURVE_SIZE
@@ -21,48 +21,94 @@
 
 #define MOCK_UNDEFINED -1
 
-float getRpmMultiplier(operation_mode_e mode);
-void setOperationMode(engine_configuration_s *engineConfiguration, operation_mode_e mode);
+// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=90826 Weak symbol does not work reliably on windows
+// https://sourceware.org/bugzilla/show_bug.cgi?id=9687 Weak symbols not working on mingw32
+#if !defined(IS_WINDOWS_COMPILER) || !IS_WINDOWS_COMPILER
+#define PUBLIC_API_WEAK_SOMETHING_WEIRD __attribute__((weak))
+#else
+#define PUBLIC_API_WEAK_SOMETHING_WEIRD
+#endif
+
+void setCrankOperationMode();
+void setCamOperationMode();
+void setTwoStrokeOperationMode();
 
 void prepareVoidConfiguration(engine_configuration_s *activeConfiguration);
-void setTargetRpmCurve(int rpm DECLARE_CONFIG_PARAMETER_SUFFIX);
-int getTargetRpmForIdleCorrection(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-void setAfrMap(afr_table_t table, float value);
-/**
- * See also setLinearCurve()
- */
-void setMap(fuel_table_t table, float value);
-void setWholeFuelMap(float value DECLARE_CONFIG_PARAMETER_SUFFIX);
-void setWholeIgnitionIatCorr(float value DECLARE_CONFIG_PARAMETER_SUFFIX);
-void setFuelTablesLoadBin(float minValue, float maxValue DECLARE_CONFIG_PARAMETER_SUFFIX);
-void setWholeIatCorrTimingTable(float value DECLARE_CONFIG_PARAMETER_SUFFIX);
-void setWholeTimingTable_d(angle_t value DECLARE_CONFIG_PARAMETER_SUFFIX);
-#define setWholeTimingTable(x) setWholeTimingTable_d(x PASS_CONFIG_PARAMETER_SUFFIX);
-void setConstantDwell(floatms_t dwellMs DECLARE_CONFIG_PARAMETER_SUFFIX);
-void printFloatArray(const char *prefix, float array[], int size);
+void setTargetRpmCurve(int rpm);
+void setFuelTablesLoadBin(float minValue, float maxValue);
+void setWholeIatCorrTimingTable(float value);
+void setWholeTimingTable(angle_t value);
+void setConstantDwell(floatms_t dwellMs);
 
 // needed by bootloader
-void setDefaultBasePins(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+void setDefaultBasePins();
 
-void setDefaultSdCardParameters(DECLARE_CONFIG_PARAMETER_SIGNATURE);
+void setDefaultSdCardParameters();
 
-void rememberCurrentConfiguration(DECLARE_ENGINE_PARAMETER_SIGNATURE);
-void incrementGlobalConfigurationVersion(DECLARE_ENGINE_PARAMETER_SIGNATURE);
+void onBurnRequest();
+void incrementGlobalConfigurationVersion(const char * msg = "undef");
 
-void commonFrankensoAnalogInputs(engine_configuration_s *engineConfiguration);
-void setFrankenso0_1_joystick(engine_configuration_s *engineConfiguration);
-
-void copyTargetAfrTable(fuel_table_t const source, afr_table_t destination);
-void copyFuelTable(fuel_table_t const source, fuel_table_t destination);
-void copyTimingTable(ignition_table_t const source, ignition_table_t destination);
+void commonFrankensoAnalogInputs();
 
 void emptyCallbackWithConfiguration(engine_configuration_s * engine);
-void setDefaultFrankensoConfiguration(DECLARE_CONFIG_PARAMETER_SIGNATURE);
 
 typedef void (*configuration_callback_t)(engine_configuration_s*);
 
 #ifdef __cplusplus
 // because of 'Logging' class parameter these functions are visible only to C++ code but C code
-void resetConfigurationExt(Logging * logger, configuration_callback_t boardCallback, engine_type_e engineType DECLARE_ENGINE_PARAMETER_SUFFIX);
-void resetConfigurationExt(Logging * logger, engine_type_e engineType DECLARE_ENGINE_PARAMETER_SUFFIX);
+void loadConfiguration();
+/**
+ * boardCallback is invoked after configuration reset but before specific engineType configuration
+ */
+void resetConfigurationExt(configuration_callback_t boardCallback, engine_type_e engineType);
+void resetConfigurationExt(engine_type_e engineType);
+
+void rememberCurrentConfiguration();
 #endif /* __cplusplus */
+
+void setBoardDefaultConfiguration();
+void setBoardConfigOverrides();
+void onBoardStandBy();
+void boardOnConfigurationChange(engine_configuration_s *previousConfiguration);
+Gpio getCommsLedPin();
+Gpio getWarningLedPin();
+Gpio getRunningLedPin();
+
+int hackHellenBoardId(int detectedId);
+
+#if !EFI_UNIT_TEST
+extern persistent_config_container_s persistentState;
+static constexpr engine_configuration_s * engineConfiguration = &persistentState.persistentConfiguration.engineConfiguration;
+static constexpr persistent_config_s * config = &persistentState.persistentConfiguration;
+#else // EFI_UNIT_TEST
+extern engine_configuration_s *engineConfiguration;
+extern persistent_config_s *config;
+#endif // EFI_UNIT_TEST
+
+/**
+ * & is reference in C++ (not C)
+ * Ref is a pointer that:
+ *   you access with dot instead of arrow
+ *   Cannot be null
+ * This is about EFI_ACTIVE_CONFIGURATION_IN_FLASH
+ */
+extern engine_configuration_s & activeConfiguration;
+
+#if ! EFI_ACTIVE_CONFIGURATION_IN_FLASH
+// We store a special changeable copy of configuration is RAM, so we can just compare them
+#define isConfigurationChanged(x) (engineConfiguration->x != activeConfiguration.x)
+#else
+// We cannot call prepareVoidConfiguration() for activeConfiguration if it's stored in flash,
+// so we need to tell the firmware that it's "void" (i.e. zeroed, invalid) by setting a special flag variable,
+// and then we consider 'x' as changed if it's just non-zero.
+extern bool isActiveConfigurationVoid;
+#define isConfigurationChanged(x) ((engineConfiguration->x != activeConfiguration.x) || (isActiveConfigurationVoid && (int)(engineConfiguration->x) != 0))
+#endif /* EFI_ACTIVE_CONFIGURATION_IN_FLASH */
+
+#define isPinOrModeChanged(pin, mode) (isConfigurationChanged(pin) || isConfigurationChanged(mode))
+
+// total number of outputs: low side + high side
+int getBoardMetaOutputsCount();
+int getBoardMetaLowSideOutputsCount();
+Gpio* getBoardMetaOutputs();
+int getBoardMetaDcOutputsCount();

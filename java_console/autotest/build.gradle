@@ -1,0 +1,27 @@
+plugins {
+    id 'java-library'
+    id 'com.github.johnrengelman.shadow' version "${shadowVersion}"
+}
+
+apply from: '../../java_tools/dependencies.gradle'
+
+dependencies {
+    api project(':ecu_io')
+    implementation global_libs.junit4
+}
+
+task simulatorFunctionalTestLauncherWithSimulator(type: Exec) {
+    dependsOn build
+    group = "Execution"
+    description = "Run the main class with ExecTask"
+    workingDir = rootProject.projectDir
+    commandLine "java", "-classpath", sourceSets.main.runtimeClasspath.getAsPath(), "com.rusefi.SimulatorFunctionalTestLauncher", "start"
+}
+
+task simulatorFunctionalTestLauncherAssumungSimulatorWasStartedExternally(type: Exec) {
+    dependsOn build
+    group = "Execution"
+    description = "Run the main class with ExecTask"
+    workingDir = rootProject.projectDir
+    commandLine "java", "-classpath", sourceSets.main.runtimeClasspath.getAsPath(), "com.rusefi.SimulatorFunctionalTestLauncher"
+}

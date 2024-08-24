@@ -8,17 +8,15 @@
 
 #pragma once
 
-#include "engine.h"
+void initSettings();
+void printSpiState();
+void printConfiguration();
+void scheduleStopEngine();
 
-void initSettings(void);
-void printSpiState(Logging *logger, const engine_configuration_s *engineConfiguration);
-void printConfiguration(const engine_configuration_s *engineConfiguration);
-void scheduleStopEngine(void);
-void setCallFromPitStop(int durationMs);
 void printTPSInfo(void);
-void setEngineType(int value);
-/**
- * See also getEngine_type_e()
- */
-const char* getConfigurationName(engine_type_e engineType);
+void setEngineTypeAndSave(int value);
+void setEngineType(int value, bool isWriteToFlash = true);
+void readPin(const char *pinName);
 
+void printDateTime();
+void setDateTime(const char * const isoDateTime);

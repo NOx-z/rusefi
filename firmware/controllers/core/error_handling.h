@@ -7,13 +7,9 @@
 
 #pragma once
 
-#include "global.h"
 #include "obd_error_codes.h"
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif /* __cplusplus */
+#include "generated_lookup_meta.h"
+#include <cstdint>
 
 /**
  * Something is wrong, but we can live with it: some minor sensor is disconnected
@@ -21,41 +17,56 @@ extern "C"
  *
  * see also firmwareError()
  */
-bool warning(obd_code_e code, const char *fmt, ...);
+bool warning(ObdCode code, const char *fmt, ...);
 
-typedef uint8_t critical_msg_t[ERROR_BUFFER_SIZE];
+using critical_msg_t = char[CRITICAL_BUFFER_SIZE];
+
+#define criticalShutdown() \
+    TURN_FATAL_LED(); \
+    turnAllPinsOff();
+
 /**
  * Something really bad had happened - firmware cannot function, we cannot run the engine
+ * We definitely use this critical error approach in case of invalid configuration. If user sets a self-contradicting
+ * configuration we have to just put a hard stop on this.
  *
  * see also warning()
  */
-void firmwareError(obd_code_e code, const char *fmt, ...);
+void firmwareError(ObdCode code, const char *fmt, ...);
+
+#define criticalError(...) firmwareError(ObdCode::OBD_PCM_Processor_Fault, __VA_ARGS__)
 
 extern bool hasFirmwareErrorFlag;
 
 #define hasFirmwareError() hasFirmwareErrorFlag
 
-// todo: rename to getCriticalErrorMessage
-char *getFirmwareError(void);
-
-void initErrorHandlingDataStructures(void);
-// todo: rename to getWarningMessage?
-char *getWarningMessage(void);
+const char* getCriticalErrorMessage(void);
+const char* getWarningMessage(void);
 
 // todo: better place for this shared declaration?
 int getRusEfiVersion(void);
 
-/**
- * @deprecated Global panic is inconvenient because it's hard to deliver the error message while whole instance
- * is stopped. Please use firmwareWarning() instead
- */
 #if EFI_ENABLE_ASSERTS
   #define efiAssert(code, condition, message, result) { if (!(condition)) { firmwareError(code, message); return result; } }
   #define efiAssertVoid(code, condition, message) { if (!(condition)) { firmwareError(code, message); return; } }
 #else /* EFI_ENABLE_ASSERTS */
-  #define efiAssert(code, condition, message, result) { }
-  #define efiAssertVoid(code, condition, message) { }
+  #define efiAssert(code, condition, message, result) { UNUSED(code);UNUSED(condition);UNUSED(message);UNUSED(result); }
+  #define efiAssertVoid(code, condition, message) { UNUSED(condition);UNUSED(message);}
 #endif /* EFI_ENABLE_ASSERTS */
+
+#define criticalAssert(condition, message, result) efiAssert(ObdCode::OBD_PCM_Processor_Fault, condition, message, result)
+#define criticalAssertVoid(condition, message) efiAssertVoid(ObdCode::OBD_PCM_Processor_Fault, condition, message)
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif /* __cplusplus */
+
+#if EFI_PROD_CODE
+
+// If there was an error on the last boot, print out information about it now and reset state.
+void checkLastBootError();
+#endif // EFI_PROD_CODE
 
 #ifdef __cplusplus
 }

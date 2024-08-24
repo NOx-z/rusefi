@@ -7,11 +7,9 @@
 
 #pragma once
 
-#include "engine.h"
+#include "rusefi_types.h"
 
-void updateDevConsoleState(void);
-void prepareTunerStudioOutputs(void);
-void startStatusThreads(void);
-void initStatusLoop(void);
-void writeLogLine(void);
-void printOverallStatus(systime_t nowSeconds);
+void updateDevConsoleState();
+void startStatusThreads();
+
+void printOverallStatus();

@@ -22,8 +22,8 @@
  * @{
  */
 
-#include "global.h"
-#include "os_access.h"
+#include <rusefi/true_false.h>
+#include "efifeatures.h"
 
 #if EFI_PERF_METRICS
 

@@ -1,51 +1,61 @@
-#!/bin/sh
+#!/bin/bash
 
-#set -x
+# file gen_config_board.sh
+#        for example ./gen_config_board.sh config/boards/hellen/hellen128 hellen128
+#                    ./gen_config_board.sh config/boards/hellen/hellen-honda-k hellen-honda-k
+#                 or ./gen_config_board.sh config/boards/atlas atlas
+#                    ./gen_config_board.sh config/boards/proteus proteus_f7
+#                    ./gen_config_board.sh config/boards/hellen/uaefi uaefi
+#                    ./gen_config_board.sh config/boards/hellen/small-can-board small-can-board
+#                    ./gen_config_board.sh config/boards/f407-discovery f407-discovery
+#                    ./gen_config_board.sh config/boards/nucleo_f767 nucleo_f767
 
-echo "This batch files reads rusefi_config.txt and produses firmware persistent configuration headers"
-echo "the storage section of rusefi.ini is updated as well"
+set -e
 
-if [ -z "$1" ]; then
-	echo "Board name parameter expected"
+echo "This script reads rusefi_config.txt and produces firmware persistent configuration headers"
+echo "the storage section of rusefiXXX.ini is updated as well"
+
+BOARD_DIR=${1:-$BOARD_DIR}
+SHORT_BOARD_NAME=${2:-$SHORT_BOARD_NAME}
+INI=${3:-"rusefi_$SHORT_BOARD_NAME.ini"}
+
+if [ -z "$BOARD_DIR" ]; then
+	echo "Board dir parameter expected"
 	exit 1
 fi
 
-BOARDNAME=$1
-
-echo "BOARDNAME=${BOARDNAME}"
-
-echo lazy is broken - TS input is not considered a change
-rm build/config.gen
-
-java -DSystemOut.name=gen_config_board \
-	-cp ../java_tools/ConfigDefinition.jar:../java_tools/configuration_definition/lib/snakeyaml.jar \
-	com.rusefi.board_generator.BoardReader \
-	-board ${BOARDNAME} \
-	-firmware_path . \
-	-out tunerstudio \
-	-enumInputFile controllers/algo/rusefi_enums.h \
-	-enumInputFile controllers/algo/rusefi_hw_enums.h
-
-[ $? -eq 0 ] || (echo "ERROR generating TunerStudio config for ${BOARDNAME}"; exit $?)
-
-java -DSystemOut.name=gen_config_board \
-	-jar ../java_tools/ConfigDefinition.jar \
-	-definition integration/rusefi_config.txt \
-	-ts_destination tunerstudio \
-	-ts_output_name rusefi_${BOARDNAME}.ini \
-	-prepend tunerstudio/${BOARDNAME}_prefix.txt \
-	-prepend config/boards/${BOARDNAME}/prepend.txt \
-	-skip build/config.gen
-
-[ $? -eq 0 ] || (echo "ERROR generating TunerStudio config for ${BOARDNAME}"; exit $?)
-
-if [ -z "${TS_PATH}" ]; then
-	echo "TS_PATH not defined"
-else
-	if [ -d "${TS_PATH}/dev_${BOARDNAME}/" ]; then
-		echo "This would automatically copy latest file to 'dev_${BOARDNAME}' TS project $TS_PATH"
-		cp -v tunerstudio/rusefi_microrusefi.ini ${TS_PATH}/dev_${BOARDNAME}/projectCfg/mainController.ini
-	fi
+if [ -z "$SHORT_BOARD_NAME" ]; then
+	echo "Short board name parameter expected"
+	exit 1
 fi
 
+echo "BOARD_DIR=${BOARD_DIR} SHORT_BOARD_NAME=${SHORT_BOARD_NAME}"
+
+shopt -s expand_aliases
+if which grealpath >/dev/null 2>&1; then alias realpath='grealpath'; fi
+FDIR=$(realpath $(dirname "$0"))
+BOARD_DIR=$(realpath --relative-to "$FDIR" "$BOARD_DIR")
+
+cd "$FDIR"
+
+source gen_config_common.sh
+echo "Using COMMON_GEN_CONFIG [$COMMON_GEN_CONFIG]"
+
+JAVA_REMOTE_DEBUG="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"
+
+# in rare cases order of arguments is important - '-tool' should be specified before '-definition'
+ #java $JAVA_REMOTE_DEBUG \
+java \
+ $COMMON_GEN_CONFIG_PREFIX \
+ 	-tool gen_config.sh \
+ $COMMON_GEN_CONFIG \
+	-enumInputFile controllers/algo/rusefi_hw_stm32_enums.h \
+	-enumInputFile controllers/algo/rusefi_hw_adc_enums.h \
+  -c_defines        controllers/generated/rusefi_generated_${SHORT_BOARD_NAME}.h \
+  -c_destination    controllers/generated/engine_configuration_generated_structures_${SHORT_BOARD_NAME}.h
+
+[ $? -eq 0 ] || { echo "ERROR generating TunerStudio config for ${BOARD_DIR}"; exit 1; }
+
+
+echo "Happy ${SHORT_BOARD_NAME}!"
 exit 0

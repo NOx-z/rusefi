@@ -7,32 +7,43 @@
  * @author andreika, (c) 2019
  */
 
-#include "global.h"
-#include "engine.h"
-#include "engine_configuration.h"
-#include "adc_inputs.h"
-#include "engine_math.h"
-#include "tps.h"
-
-EXTERN_ENGINE;
+#include "pch.h"
 
 #if 0
 char __debugBuffer[80];
 int __debugEnabled = 0;
 #endif
 
-void setBoardConfigurationOverrides(void) {
-	setOperationMode(engineConfiguration, FOUR_STROKE_CRANK_SENSOR);
-	engineConfiguration->trigger.type = TT_TOOTHED_WHEEL_60_2;
-	engineConfiguration->useOnlyRisingEdgeForTrigger = true;
+Gpio getWarningLedPin() {
+	// this board has no warning led
+	return Gpio::Unassigned;
+}
 
-	engineConfiguration->isFasterEngineSpinUpEnabled = true;
+Gpio getRunningLedPin() {
+	return Gpio::Unassigned;
+}
+
+Gpio getCommsLedPin() {
+	// this board has no comms led
+	return Gpio::Unassigned;
+}
+
+static void setSerialConfigurationOverrides() {
+	engineConfiguration->binarySerialTxPin = Gpio::C7;
+	engineConfiguration->binarySerialRxPin = Gpio::C6;
+//	engineConfiguration->consoleSerialTxPin = Gpio::A10;
+//	engineConfiguration->consoleSerialRxPin = Gpio::A11;
+	engineConfiguration->tunerStudioSerialSpeed = SERIAL_SPEED;
+	engineConfiguration->uartConsoleSerialSpeed = SERIAL_SPEED;
+}
+
+void setBoardOverrides() {
 	engineConfiguration->useNoiselessTriggerDecoder = true;
 
-	setAlgorithm(LM_SPEED_DENSITY PASS_CONFIG_PARAMETER_SUFFIX);
+	setAlgorithm(LM_SPEED_DENSITY);
 
-	engineConfiguration->specs.cylindersCount = 4;
-	engineConfiguration->specs.firingOrder = FO_1_3_4_2;
+	engineConfiguration->cylindersCount = 4;
+	engineConfiguration->firingOrder = FO_1_3_4_2;
 
 	engineConfiguration->ignitionMode = IM_WASTED_SPARK;
 	engineConfiguration->crankingInjectionMode = IM_SIMULTANEOUS;
@@ -40,15 +51,12 @@ void setBoardConfigurationOverrides(void) {
 
 	engineConfiguration->globalTriggerAngleOffset = 114;	// the end of 19th tooth?
 
-	engineConfiguration->specs.displacement = 1.645;
+	engineConfiguration->displacement = 1.645;
 	engineConfiguration->injector.flow = 200;
-	
-	engineConfiguration->cranking.baseFuel = 5;		// ???
-	engineConfiguration->crankingChargeAngle = 70;
+
+	engineConfiguration->cranking.baseFuel = 25;		// ???
 	engineConfiguration->cranking.rpm = 600;
 
-	engineConfiguration->rpmHardLimit = 3000; // yes, 3k. let's play it safe for now
-	
 	engineConfiguration->map.sensor.type = MT_MPX4250A;
 
 	engineConfiguration->idleStepperReactionTime = 10;
@@ -61,11 +69,6 @@ void setBoardConfigurationOverrides(void) {
 	engineConfiguration->clt.config.resistance_2 = 5.0f;
 	engineConfiguration->clt.config.tempC_2 = 120.0f,
 	engineConfiguration->clt.config.bias_resistor = 3300;
-	
-	//engineConfiguration->canNbcType = CAN_BUS_NBC_BMW;
-	engineConfiguration->canNbcType = CAN_BUS_MAZDA_RX8;
-	engineConfiguration->canReadEnabled = true;
-	engineConfiguration->canWriteEnabled = false;
 
 	engineConfiguration->tpsMin = convertVoltageTo10bitADC(0.250);
 	engineConfiguration->tpsMax = convertVoltageTo10bitADC(4.538);
@@ -74,67 +77,48 @@ void setBoardConfigurationOverrides(void) {
 
 	engineConfiguration->mapMinBufferLength = 4;
 
-	// todo:
-	engineConfiguration->map.sensor.hwChannel = EFI_ADC_NONE;
-	engineConfiguration->mafAdcChannel = EFI_ADC_NONE;
-	engineConfiguration->hipOutputChannel = EFI_ADC_NONE;
-	engineConfiguration->tps1_1AdcChannel = EFI_ADC_NONE;
-	engineConfiguration->fuelLevelSensor = EFI_ADC_NONE;
-	engineConfiguration->throttlePedalPositionAdcChannel = EFI_ADC_NONE;
-	engineConfiguration->vbattAdcChannel = EFI_ADC_NONE;
-	engineConfiguration->clt.adcChannel = EFI_ADC_NONE;
-	engineConfiguration->iat.adcChannel = EFI_ADC_NONE;
-	engineConfiguration->afr.hwChannel = EFI_ADC_NONE;
-	engineConfiguration->oilPressure.hwChannel = EFI_ADC_NONE;
-	engineConfiguration->acSwitchAdc = EFI_ADC_NONE;
-	
 	engineConfiguration->clt.adcChannel = EFI_ADC_14;
 
-	engineConfiguration->triggerInputPins[0] = GPIOE_7;
-	engineConfiguration->triggerInputPins[1] = GPIO_UNASSIGNED;
-	engineConfiguration->triggerInputPins[2] = GPIO_UNASSIGNED;
+	engineConfiguration->triggerInputPins[0] = Gpio::E7;
+	engineConfiguration->triggerInputPins[1] = Gpio::Unassigned;
 
 	engineConfiguration->tle6240spiDevice = SPI_DEVICE_1;
-	engineConfiguration->tle6240_cs = GPIOB_0;
-	
+	engineConfiguration->tle6240_cs = Gpio::B0;
+
 	// todo:
 	int i;
-	for (i = 0; i < INJECTION_PIN_COUNT; i++)
-		engineConfiguration->injectionPins[i] = GPIO_UNASSIGNED;
-	for (i = 0; i < IGNITION_PIN_COUNT; i++)
-		engineConfiguration->ignitionPins[i] = GPIO_UNASSIGNED;
-	
+	for (i = 0; i < MAX_CYLINDER_COUNT; i++)
+		engineConfiguration->injectionPins[i] = Gpio::Unassigned;
+	for (i = 0; i < MAX_CYLINDER_COUNT; i++)
+		engineConfiguration->ignitionPins[i] = Gpio::Unassigned;
+
 	engineConfiguration->adcVcc = 5.0f;
 	engineConfiguration->analogInputDividerCoefficient = 1;
 
 	//engineConfiguration->isFastAdcEnabled = false;
-		
+
 	// we call it here because setDefaultBoardConfiguration() is not called for DEFAULT_ENGINE_TYPE=MINIMAL_PINS
 	setSerialConfigurationOverrides();
 }
 
-void setPinConfigurationOverrides(void) {
-}
-
-void setSerialConfigurationOverrides(void) {
-	engineConfiguration->useSerialPort = true;
-	engineConfiguration->binarySerialTxPin = GPIOC_7;
-	engineConfiguration->binarySerialRxPin = GPIOC_6;
-	engineConfiguration->consoleSerialTxPin = GPIOA_10;
-	engineConfiguration->consoleSerialRxPin = GPIOA_11;
-	engineConfiguration->tunerStudioSerialSpeed = SERIAL_SPEED;
-	engineConfiguration->uartConsoleSerialSpeed = SERIAL_SPEED;
-}
-
-void setSdCardConfigurationOverrides(void) {
-}
-
-void setAdcChannelOverrides(void) {
-	// on Kinetis, ADC_FAST & SLOW are not really "fast" or "slow", 
+void setAdcChannelOverrides() {
+	// on Kinetis, ADC_FAST & SLOW are not really "fast" or "slow",
 	// they are just different ADC numbers with different sets of channels
 	removeChannel("VBatt", engineConfiguration->vbattAdcChannel);
-	addChannel("VBatt", engineConfiguration->vbattAdcChannel, ADC_FAST);
-	
+	addFastAdcChannel("VBatt", engineConfiguration->vbattAdcChannel);
+
 	removeChannel("TPS", engineConfiguration->tps1_1AdcChannel);
-	addChannel("TPS", engineConfiguration->tps1_1AdcChannel, ADC_SLOW);
+	addFastAdcChannel("TPS", engineConfiguration->tps1_1AdcChannel);
+}
+
+#include <setjmp.h>
+
+void longjmp(jmp_buf /*env*/, int /*status*/) {
+	// noop, but noreturn
+	while (1) { }
+}
+
+int setjmp(jmp_buf /*env*/) {
+	// Fake return 0, not implemented
+	return 0;
 }

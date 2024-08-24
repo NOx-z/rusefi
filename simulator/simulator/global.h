@@ -15,6 +15,7 @@
 #include <time.h>
 
 #include "common_headers.h"
+#include "signal_executor_sleep.h"
 
 #include "boards.h"
 
@@ -22,21 +23,10 @@
 #include "chprintf.h"
 #include "cli_registry.h"
 #include "eficonsole.h"
+#include <ch.hpp>
 #endif /* __cplusplus */
 
-#define efiSetPadMode(msg, brainPin, mode) {}
-
-#define EFI_UNIT_TEST FALSE
-
 #define hasOsPanicError() (FALSE)
-
-#define US_TO_NT_MULTIPLIER 100
-
-#define ALWAYS_INLINE
-
-#define US2NT(x) (US_TO_NT_MULTIPLIER * (x))
-
-#define NT2US(x) ((x) / US_TO_NT_MULTIPLIER)
 
 // need to fight 32bit int overflow
 
@@ -54,22 +44,19 @@
 // project-wide default thread stack size
 #define UTILITY_THREAD_STACK_SIZE 1384
 
-extern BaseChannel serialAdapterInstance;
+#define UNIT_TEST_BUSY_WAIT_CALLBACK() {}
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif /* __cplusplus */
 
-void printToConsole(char *p);
+void printToConsole(const char *p);
 
 #define getCurrentRemainingStack() getRemainingStack(chThdGetSelfX())
 
 int getRemainingStack(thread_t *otp);
 
-// todo: move somewhere else?
-bool lockAnyContext(void);
-void unlockAnyContext(void);
 void applyNewConfiguration(void);
 
 #ifdef __cplusplus

@@ -14,22 +14,14 @@
 
 #define MC33972_INPUTS				22
 
-/* DOTO: add irq support */
+/* TODO: add irq support */
 #define MC33972_POLL_INTERVAL_MS	100
 
 struct mc33972_config {
+#if HAL_USE_SPI
 	SPIDriver		*spi_bus;
 	SPIConfig	spi_config;
+#endif
 };
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif /* __cplusplus */
-
-int mc33972_add(unsigned int index, const struct mc33972_config *cfg);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
+int mc33972_add(brain_pin_e base, unsigned int index, const struct mc33972_config *cfg);

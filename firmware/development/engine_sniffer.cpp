@@ -24,22 +24,26 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "global.h"
-#include "os_access.h"
+#include "pch.h"
+
 #include "engine_sniffer.h"
-#include "adc_inputs.h"
+
+// a bit weird because of conditional compilation
+static char shaft_signal_msg_index[15];
+
+#if EFI_ENGINE_SNIFFER
+#define addEngineSnifferEvent(name, msg) { if (getTriggerCentral()->isEngineSnifferEnabled) { waveChart.addEvent3((name), (msg)); } }
+ #else
+#define addEngineSnifferEvent(name, msg) { UNUSED(name); }
+#endif /* EFI_ENGINE_SNIFFER */
 
 #if EFI_ENGINE_SNIFFER
 
-#include "engine_configuration.h"
 #include "eficonsole.h"
 #include "status_loop.h"
-#include "perf_trace.h"
 
 #define CHART_DELIMETER	'!'
-
-EXTERN_ENGINE;
-extern uint32_t maxLockedDuration;
+extern WaveChart waveChart;
 
 /**
  * This is the number of events in the digital chart which would be displayed
@@ -55,14 +59,6 @@ static char WAVE_LOGGING_BUFFER[WAVE_LOGGING_SIZE] CCM_OPTIONAL;
 
 int waveChartUsedSize;
 
-//#define DEBUG_WAVE 1
-
-#if DEBUG_WAVE
-static Logging debugLogging;
-#endif /* DEBUG_WAVE */
-
-static LoggingWithStorage logger("wave info");
-
 /**
  * We want to skip some engine cycles to skip what was scheduled before parameters were changed
  */
@@ -70,30 +66,26 @@ static uint32_t skipUntilEngineCycle = 0;
 
 #if ! EFI_UNIT_TEST
 extern WaveChart waveChart;
-static void resetNow(void) {
+static void resetNow() {
 	skipUntilEngineCycle = getRevolutionCounter() + 3;
 	waveChart.reset();
 }
-#endif
+#endif // EFI_UNIT_TEST
 
-WaveChart::WaveChart() {
+WaveChart::WaveChart() : logging("wave chart", WAVE_LOGGING_BUFFER, sizeof(WAVE_LOGGING_BUFFER)) {
 }
 
 void WaveChart::init() {
-	logging.initLoggingExt("wave chart", WAVE_LOGGING_BUFFER, sizeof(WAVE_LOGGING_BUFFER));
 	isInitialized = true;
 	reset();
 }
 
 void WaveChart::reset() {
-#if DEBUG_WAVE
-	scheduleSimpleMsg(&debugLogging, "reset while at ", counter);
-#endif /* DEBUG_WAVE */
-	resetLogging(&logging);
+	logging.reset();
 	counter = 0;
 	startTimeNt = 0;
 	collectingData = false;
-	appendPrintf(&logging, "%s%s", PROTOCOL_ENGINE_SNIFFER, DELIMETER);
+	logging.appendPrintf( "%s%s", PROTOCOL_ENGINE_SNIFFER, LOG_DELIMITER);
 }
 
 void WaveChart::startDataCollection() {
@@ -107,25 +99,22 @@ bool WaveChart::isStartedTooLongAgo() const {
 	 * engineChartSize/20 is the longest meaningful chart.
 	 *
 	 */
-	efitick_t chartDurationNt = getTimeNowNt() - startTimeNt;
+	efidur_t chartDurationNt = getTimeNowNt() - startTimeNt;
 	return startTimeNt != 0 && NT2US(chartDurationNt) > engineConfiguration->engineChartSize * 1000000 / 20;
 }
 
 bool WaveChart::isFull() const {
-	return counter >= CONFIG(engineChartSize);
+	return counter >= engineConfiguration->engineChartSize;
 }
 
-static void printStatus(void) {
-	scheduleMsg(&logger, "engine chart: %s", boolToString(engineConfiguration->isEngineChartEnabled));
-	scheduleMsg(&logger, "engine chart size=%d", engineConfiguration->engineChartSize);
+int WaveChart::getSize() {
+	return counter;
 }
 
-static void setChartActive(int value) {
-	engineConfiguration->isEngineChartEnabled = value;
-	printStatus();
-#if EFI_CLOCK_LOCKS
-	maxLockedDuration = 0; // todo: why do we reset this here? why only this and not all metrics?
-#endif /* EFI_CLOCK_LOCKS */
+#if ! EFI_UNIT_TEST
+static void printStatus() {
+	efiPrintf("engine sniffer: %s", boolToString(getTriggerCentral()->isEngineSnifferEnabled));
+	efiPrintf("engine sniffer size=%lu", engineConfiguration->engineChartSize);
 }
 
 void setChartSize(int newSize) {
@@ -135,6 +124,7 @@ void setChartSize(int newSize) {
 	engineConfiguration->engineChartSize = newSize;
 	printStatus();
 }
+#endif // EFI_UNIT_TEST
 
 void WaveChart::publishIfFull() {
 	if (isFull() || isStartedTooLongAgo()) {
@@ -144,57 +134,51 @@ void WaveChart::publishIfFull() {
 }
 
 void WaveChart::publish() {
-	appendPrintf(&logging, DELIMETER);
-	waveChartUsedSize = loggingSize(&logging);
-#if DEBUG_WAVE
-	Logging *l = &chart->logging;
-	scheduleSimpleMsg(&debugLogging, "IT'S TIME", strlen(l->buffer));
-#endif
-	if (ENGINE(isEngineChartEnabled)) {
+#if EFI_ENGINE_SNIFFER
+	logging.appendPrintf( LOG_DELIMITER);
+	waveChartUsedSize = logging.loggingSize();
+
+	if (getTriggerCentral()->isEngineSnifferEnabled) {
 		scheduleLogging(&logging);
 	}
+#endif /* EFI_ENGINE_SNIFFER */
 }
 
 /**
  * @brief	Register an event for digital sniffer
  */
 void WaveChart::addEvent3(const char *name, const char * msg) {
+#if EFI_TEXT_LOGGING
 	ScopePerf perf(PE::EngineSniffer);
+	efitick_t nowNt = getTimeNowNt();
 
-	if (getTimeNowNt() < pauseEngineSnifferUntilNt) {
+	if (nowNt < pauseEngineSnifferUntilNt) {
 		return;
 	}
-#if EFI_TEXT_LOGGING
-	if (!ENGINE(isEngineChartEnabled)) {
+	if (!getTriggerCentral()->isEngineSnifferEnabled) {
 		return;
 	}
 	if (skipUntilEngineCycle != 0 && getRevolutionCounter() < skipUntilEngineCycle)
 		return;
 #if EFI_SIMULATOR
-	// todo: add UI control to enable this for firmware if desired
-	// CONFIG(alignEngineSnifferAtTDC) &&
 	if (!collectingData) {
 		return;
 	}
 #endif
-	efiAssertVoid(CUSTOM_ERR_6651, name!=NULL, "WC: NULL name");
+	efiAssertVoid(ObdCode::CUSTOM_ERR_6651, name!=NULL, "WC: NULL name");
 
 #if EFI_PROD_CODE
-	efiAssertVoid(CUSTOM_ERR_6652, getCurrentRemainingStack() > 32, "lowstck#2c");
+	efiAssertVoid(ObdCode::CUSTOM_ERR_6652, getCurrentRemainingStack() > 32, "lowstck#2c");
 #endif /* EFI_PROD_CODE */
 
-	efiAssertVoid(CUSTOM_ERR_6653, isInitialized, "chart not initialized");
-#if DEBUG_WAVE
-	scheduleSimpleMsg(&debugLogging, "current", chart->counter);
-#endif /* DEBUG_WAVE */
+	efiAssertVoid(ObdCode::CUSTOM_ERR_6653, isInitialized, "chart not initialized");
+
 	if (isFull()) {
 		return;
 	}
 
-
-	efitick_t nowNt = getTimeNowNt();
-
-	bool alreadyLocked = lockOutputBuffer(); // we have multiple threads writing to the same output buffer
+	// we have multiple threads writing to the same output buffer
+	chibios_rt::CriticalSectionLocker csl;
 
 	if (counter == 0) {
 		startTimeNt = nowNt;
@@ -211,50 +195,82 @@ void WaveChart::addEvent3(const char *name, const char * msg) {
 	 * at least that's 32 bit division now
 	 */
 	uint32_t diffNt = nowNt - startTimeNt;
-	uint32_t time100 = NT2US(diffNt / 10);
+	uint32_t time100 = NT2US(diffNt / ENGINE_SNIFFER_UNIT_US);
 
-	if (remainingSize(&logging) > 35) {
+	if (logging.remainingSize() > 35) {
 		/**
 		 * printf is a heavy method, append is used here as a performance optimization
 		 */
-		appendFast(&logging, name);
-		appendChar(&logging, CHART_DELIMETER);
-		appendFast(&logging, msg);
-		appendChar(&logging, CHART_DELIMETER);
+		logging.appendFast(name);
+		logging.appendChar(CHART_DELIMETER);
+		logging.appendFast(msg);
+		logging.appendChar(CHART_DELIMETER);
 //		time100 -= startTime100;
 
 		itoa10(timeBuffer, time100);
-		appendFast(&logging, timeBuffer);
-		appendChar(&logging, CHART_DELIMETER);
-		logging.linePointer[0] = 0;
-	}
-	if (!alreadyLocked) {
-		unlockOutputBuffer();
+		logging.appendFast(timeBuffer);
+		logging.appendChar(CHART_DELIMETER);
+		logging.terminate();
 	}
 #endif /* EFI_TEXT_LOGGING */
 }
 
 void initWaveChart(WaveChart *chart) {
+	strcpy((char*) shaft_signal_msg_index, "x_");
 	/**
 	 * constructor does not work because we need specific initialization order
 	 */
 	chart->init();
 
-	printStatus();
-
-#if DEBUG_WAVE
-	initLoggingExt(&debugLogging, "wave chart debug", &debugLogging.DEFAULT_BUFFER, sizeof(debugLogging.DEFAULT_BUFFER));
-#endif
-
 #if EFI_HISTOGRAMS
-	initHistogram(&engineSnifferHisto, "wave chart");
+	initHistogram(&engineSnifferHisto, "engine sniffer");
 #endif /* EFI_HISTOGRAMS */
 
-	addConsoleActionI("chartsize", setChartSize);
-	addConsoleActionI("chart", setChartActive);
 #if ! EFI_UNIT_TEST
+	printStatus();
+	addConsoleActionI("chartsize", setChartSize);
+	// this is used by HW CI
 	addConsoleAction(CMD_RESET_ENGINE_SNIFFER, resetNow);
-#endif
+#endif // EFI_UNIT_TEST
 }
 
 #endif /* EFI_ENGINE_SNIFFER */
+
+void addEngineSnifferOutputPinEvent(NamedOutputPin *pin, FrontDirection frontDirection) {
+	if (!engineConfiguration->engineSnifferFocusOnInputs) {
+		addEngineSnifferEvent(pin->getShortName(), frontDirection == FrontDirection::UP ? PROTOCOL_ES_UP : PROTOCOL_ES_DOWN);
+	}
+}
+
+void addEngineSnifferTdcEvent(int rpm) {
+	static char rpmBuffer[_MAX_FILLER];
+	itoa10(rpmBuffer, rpm);
+#if EFI_ENGINE_SNIFFER
+	waveChart.startDataCollection();
+#endif
+	addEngineSnifferEvent(TOP_DEAD_CENTER_MESSAGE, (char* ) rpmBuffer);
+}
+
+void addEngineSnifferLogicAnalyzerEvent(int laIndex, FrontDirection frontDirection) {
+	extern const char *laNames[];
+	const char *name = laNames[laIndex];
+
+	addEngineSnifferEvent(name, frontDirection == FrontDirection::UP ? PROTOCOL_ES_UP : PROTOCOL_ES_DOWN);
+}
+
+void addEngineSnifferCrankEvent(int wheelIndex, int triggerEventIndex, FrontDirection frontDirection) {
+	static const char *crankName[2] = { PROTOCOL_CRANK1, PROTOCOL_CRANK2 };
+
+	shaft_signal_msg_index[0] = frontDirection == FrontDirection::UP ? 'u' : 'd';
+	// shaft_signal_msg_index[1] is assigned once and forever in the init method below
+	itoa10(&shaft_signal_msg_index[2], triggerEventIndex);
+
+	addEngineSnifferEvent(crankName[wheelIndex], (char* ) shaft_signal_msg_index);
+}
+
+void addEngineSnifferVvtEvent(int vvtIndex, FrontDirection frontDirection) {
+	extern const char *vvtNames[];
+	const char *vvtName = vvtNames[vvtIndex];
+
+	addEngineSnifferEvent(vvtName, frontDirection == FrontDirection::UP ? PROTOCOL_ES_UP : PROTOCOL_ES_DOWN);
+}

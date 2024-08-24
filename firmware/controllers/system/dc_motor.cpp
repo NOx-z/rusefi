@@ -6,26 +6,33 @@
  * @author Matthew Kennedy
  */
 
-#include "dc_motor.h"
-#include "efi_gpio.h"
-#include "pwm_generator_logic.h"
+#include "pch.h"
 
-TwoPinDcMotor::TwoPinDcMotor(SimplePwm* enable, SimplePwm* dir1, SimplePwm* dir2, OutputPin* disablePin)
-    : m_enable(enable)
-    , m_dir1(dir1)
-    , m_dir2(dir2)
-	, m_disable(disablePin)
+#include "dc_motor.h"
+
+TwoPinDcMotor::TwoPinDcMotor(OutputPin& disablePin)
+	: m_disable(&disablePin)
 {
-	disable();
+	disable("init");
+}
+
+void TwoPinDcMotor::configure(IPwm& enable, IPwm& dir1, IPwm& dir2, bool isInverted) {
+	m_enable = &enable;
+	m_dir1 = &dir1;
+	m_dir2 = &dir2;
+	m_isInverted = isInverted;
 }
 
 void TwoPinDcMotor::enable() {
 	if (m_disable) {
 		m_disable->setValue(false);
 	}
+
+	m_msg = nullptr;
 }
 
-void TwoPinDcMotor::disable() {
+void TwoPinDcMotor::disable(const char *msg) {
+	m_msg = msg;
 	if (m_disable) {
 		m_disable->setValue(true);
 	}
@@ -49,34 +56,54 @@ bool TwoPinDcMotor::set(float duty)
 {
 	m_value = duty;
 
-    bool isPositive = duty > 0;
+	// For low voltage, voltageRatio will be >1 to boost duty so that motor current stays the same
+	// At high voltage, the inverse will be true to keep behavior always the same.
+	float voltageRatio = 14 / Sensor::get(SensorType::BatteryVoltage).value_or(14);
+	duty *= voltageRatio;
 
-    if (!isPositive) {
-        duty = -duty;
-    }
+	// If not init, don't try to set
+	if (!m_dir1 || !m_dir2 || !m_enable) {
+		if (m_disable) {
+			m_disable->setValue(true);
+		}
 
-    // below here 'duty' is a not negative
+		return false;
+	}
 
-    // Clamp to 100%
-    if (duty > 1.0f) {
-        duty = 1.0f;
-    }
-    // Disable for very small duty
-    else if (duty < 0.01f)
-    {
-        duty = 0.0f;
-    }
+	bool isPositive = duty > 0;
 
-    // If we're in two pin mode, force 100%, else use this pin to PWM
-    float enableDuty = m_type == ControlType::PwmEnablePin ? duty : 1;
+	if (!isPositive) {
+		duty = -duty;
+	}
 
-    // Direction pins get 100% duty unless we're in PwmDirectionPins mode
-    float dirDuty = m_type == ControlType::PwmDirectionPins ? duty : 1;
+	// below here 'duty' is a not negative
 
-    m_enable->setSimplePwmDutyCycle(enableDuty);
-    m_dir1->setSimplePwmDutyCycle(isPositive ? dirDuty : 0);
-    m_dir2->setSimplePwmDutyCycle(isPositive ? 0 : dirDuty);
+	// Clamp to 100%
+	if (duty > 1.0f) {
+		duty = 1.0f;
+	}
+	// Disable for very small duty
+	else if (duty < 0.01f)
+	{
+		duty = 0.0f;
+	}
 
-    // This motor has no fault detection, so always return false (indicate success).
-    return false;
+	// If we're in two pin mode, force 100%, else use this pin to PWM
+	float enableDuty = m_type == ControlType::PwmEnablePin ? duty : 1;
+
+	// Direction pins get 100% duty unless we're in PwmDirectionPins mode
+	float dirDuty = m_type == ControlType::PwmDirectionPins ? duty : 1;
+
+	m_enable->setSimplePwmDutyCycle(enableDuty);
+	float recipDuty = 0;
+	if (m_isInverted) {
+		dirDuty = 1.0f - dirDuty;
+		recipDuty = 1.0f;
+	}
+
+	m_dir1->setSimplePwmDutyCycle(isPositive ? dirDuty : recipDuty);
+	m_dir2->setSimplePwmDutyCycle(isPositive ? recipDuty : dirDuty);
+
+	// This motor has no fault detection, so always return false (indicate success).
+	return false;
 }

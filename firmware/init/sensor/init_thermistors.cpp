@@ -1,22 +1,14 @@
+#include "pch.h"
+
 #include "adc_subscription.h"
-#include "engine.h"
-#include "error_handling.h"
-#include "global.h"
 #include "functional_sensor.h"
-#include "func_chain.h"
 #include "linear_func.h"
-#include "resistance_func.h"
 #include "thermistor_func.h"
-
-EXTERN_ENGINE;
-
-using resist = ResistanceFunc;
-using therm = ThermistorFunc;
 
 // Each one could be either linear or thermistor
 struct FuncPair {
 	LinearFunc linear;
-	FuncChain<resist, therm> thermistor;
+	thermistor_t thermistor;
 };
 
 static CCM_OPTIONAL FunctionalSensor clt(SensorType::Clt, MS2NT(10));
@@ -24,90 +16,136 @@ static CCM_OPTIONAL FunctionalSensor iat(SensorType::Iat, MS2NT(10));
 static CCM_OPTIONAL FunctionalSensor aux1(SensorType::AuxTemp1, MS2NT(10));
 static CCM_OPTIONAL FunctionalSensor aux2(SensorType::AuxTemp2, MS2NT(10));
 
-static FuncPair fclt, fiat, faux1, faux2;
+static CCM_OPTIONAL FunctionalSensor oilTempSensor(SensorType::OilTemperature, MS2NT(10));
+static CCM_OPTIONAL FunctionalSensor fuelTempSensor(SensorType::FuelTemperature, MS2NT(10));
+static CCM_OPTIONAL FunctionalSensor ambientTempSensor(SensorType::AmbientTemperature, MS2NT(10));
+static CCM_OPTIONAL FunctionalSensor compressorDischargeTemp(SensorType::CompressorDischargeTemperature, MS2NT(10));
 
-static SensorConverter& configureTempSensorFunction(thermistor_conf_s& cfg, FuncPair& p, bool isLinear) {
+static FuncPair fclt, fiat, faux1, faux2, foil, ffuel, fambient, fcdt;
+
+static void validateThermistorConfig(const char *msg, thermistor_conf_s& cfg) {
+	if (cfg.tempC_1 >= cfg.tempC_2 ||
+		cfg.tempC_2 >= cfg.tempC_3) {
+		firmwareError(ObdCode::OBD_ThermistorConfig, "Invalid thermistor %s configuration: please check that temperatures are in the ascending order %f %f %f",
+				msg,
+				(float)cfg.tempC_1,
+				(float)cfg.tempC_2,
+				(float)cfg.tempC_3);
+	}
+}
+
+static SensorConverter& configureTempSensorFunction(const char *msg,
+		thermistor_conf_s& cfg, FuncPair& p, bool isLinear, bool isPulldown) {
 	if (isLinear) {
 		p.linear.configure(cfg.resistance_1, cfg.tempC_1, cfg.resistance_2, cfg.tempC_2, -50, 250);
 
 		return p.linear;
 	} else /* sensor is thermistor */ {
-		p.thermistor.get<resist>().configure(5.0f, cfg.bias_resistor);
+		validateThermistorConfig(msg, cfg);
+
+		p.thermistor.get<resist>().configure(5.0f, cfg.bias_resistor, isPulldown);
 		p.thermistor.get<therm>().configure(cfg);
 
 		return p.thermistor;
 	}
 }
 
-void configTherm(FunctionalSensor &sensor,
+static void configTherm(const char *msg,
+		FunctionalSensor &sensor,
 					FuncPair &p,
-					ThermistorConf &config,
-					bool isLinear) {
-	// Configure the conversion function for this sensor
-	sensor.setFunction(configureTempSensorFunction(config.config, p, isLinear));
-}
-
-static void configureTempSensor(FunctionalSensor &sensor,
-								FuncPair &p,
-								ThermistorConf &config,
-								bool isLinear) {
-	auto channel = config.adcChannel;
-
-	// Only register if we have a sensor
-	if (channel == EFI_ADC_NONE) {
+					ThermistorConf &p_config,
+					bool isLinear,
+					bool isPulldown) {
+	// nothing to do if no channel
+	if (!isAdcChannelValid(p_config.adcChannel)) {
 		return;
 	}
 
-	configTherm(sensor, p, config, isLinear);
+	// Configure the conversion function for this sensor
+	sensor.setFunction(configureTempSensorFunction(msg, p_config.config, p, isLinear, isPulldown));
+}
 
-	AdcSubscription::SubscribeSensor(sensor, channel);
+static void configureTempSensor(const char *msg,
+								FunctionalSensor &sensor,
+								FuncPair &p,
+								ThermistorConf &p_config,
+								bool isLinear,
+								bool isPulldown = false) {
+	auto channel = p_config.adcChannel;
+
+	// Only register if we have a sensor
+	if (!isAdcChannelValid(channel)) {
+		return;
+	}
+
+	configTherm(msg, sensor, p, p_config, isLinear, isPulldown);
 
 	// Register & subscribe
-	if (!sensor.Register()) {
-		// uhh?
-	}
+	AdcSubscription::SubscribeSensor(sensor, channel, 2);
+	sensor.Register();
 }
 
-void initNewThermistors(DECLARE_ENGINE_PARAMETER_SIGNATURE) {
-	configureTempSensor(clt,
+void initThermistors() {
+	if (!engineConfiguration->consumeObdSensors) {
+		configureTempSensor("clt",
+						clt,
 						fclt,
-						CONFIG(clt),
-						CONFIG(useLinearCltSensor));
+						engineConfiguration->clt,
+						engineConfiguration->useLinearCltSensor,
+						engineConfiguration->cltSensorPulldown);
 
-	configureTempSensor(iat,
+		configureTempSensor("iat",
+						iat,
 						fiat,
-						CONFIG(iat),
-						CONFIG(useLinearIatSensor));
+						engineConfiguration->iat,
+						engineConfiguration->useLinearIatSensor,
+						engineConfiguration->iatSensorPulldown);
+	}
 
-	configureTempSensor(aux1,
-						faux1,
-						CONFIG(auxTempSensor1),
+	configureTempSensor("oil temp",
+						oilTempSensor,
+						faux2,
+						engineConfiguration->oilTempSensor,
 						false);
 
-	configureTempSensor(aux2,
+	configureTempSensor("fuel temp",
+						fuelTempSensor,
+						ffuel,
+						engineConfiguration->fuelTempSensor,
+						false);
+
+	configureTempSensor("ambient temp",
+						ambientTempSensor,
+						fambient,
+						engineConfiguration->ambientTempSensor,
+						false);
+
+	configureTempSensor("compressor discharge temp",
+						compressorDischargeTemp,
+						fcdt,
+						engineConfiguration->compressorDischargeTemperature,
+						false);
+
+	configureTempSensor("aux1",
+						aux1,
+						faux1,
+						engineConfiguration->auxTempSensor1,
+						false);
+
+	configureTempSensor("aux2",
+						aux2,
 						faux2,
-						CONFIG(auxTempSensor2),
+						engineConfiguration->auxTempSensor2,
 						false);
 }
 
-void reconfigureThermistors(DECLARE_ENGINE_PARAMETER_SIGNATURE) {
-	configTherm(clt,
-				fclt,
-				CONFIG(clt),
-				CONFIG(useLinearCltSensor));
-
-	configTherm(iat,
-				fiat,
-				CONFIG(iat),
-				CONFIG(useLinearIatSensor));
-
-	configTherm(aux1,
-				faux1,
-				CONFIG(auxTempSensor1),
-				false);
-
-	configTherm(aux2,
-				faux2,
-				CONFIG(auxTempSensor2),
-				false);
+void deinitThermistors() {
+	AdcSubscription::UnsubscribeSensor(clt, engineConfiguration->clt.adcChannel);
+	AdcSubscription::UnsubscribeSensor(iat, engineConfiguration->iat.adcChannel);
+	AdcSubscription::UnsubscribeSensor(oilTempSensor, engineConfiguration->oilTempSensor.adcChannel);
+	AdcSubscription::UnsubscribeSensor(fuelTempSensor, engineConfiguration->fuelTempSensor.adcChannel);
+	AdcSubscription::UnsubscribeSensor(ambientTempSensor, engineConfiguration->ambientTempSensor.adcChannel);
+	AdcSubscription::UnsubscribeSensor(compressorDischargeTemp, engineConfiguration->compressorDischargeTemperature.adcChannel);
+	AdcSubscription::UnsubscribeSensor(aux1, engineConfiguration->auxTempSensor1.adcChannel);
+	AdcSubscription::UnsubscribeSensor(aux2, engineConfiguration->auxTempSensor2.adcChannel);
 }

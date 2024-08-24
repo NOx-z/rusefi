@@ -7,28 +7,88 @@
  * @author Andrey Belomutskiy, (c) 2012-2020
  */
 
-#include "global.h"
-#include "io_pins.h"
+#include "pch.h"
 
 #if EFI_PROD_CODE
-#include "os_access.h"
-#include "efi_gpio.h"
-#include "drivers/gpio/gpio_ext.h"
 
-#include "pin_repository.h"
+#include "gpio/gpio_ext.h"
+
 #include "status_loop.h"
-#include "engine_configuration.h"
 #include "console_io.h"
+#endif /* EFI_PROD_CODE */
 
-EXTERN_ENGINE;
+void efiSetPadUnused(brain_pin_e brainPin) {
+#if EFI_PROD_CODE
+	/* input with pull up, is it safe? */
+	iomode_t mode = PAL_STM32_MODE_INPUT | PAL_STM32_PUPDR_PULLUP;
+
+	if (brain_pin_is_onchip(brainPin)) {
+		ioportid_t port = getHwPort("unused", brainPin);
+		ioportmask_t pin = getHwPin("unused", brainPin);
+
+		/* input with pull up, is it safe?
+		 * todo: shall we reuse 'default state' constants with board.h?
+		 * */
+		palSetPadMode(port, pin, mode);
+		palWritePad(port, pin, 0);
+	}
+	#if (BOARD_EXT_GPIOCHIPS > 0)
+		else {
+			gpiochips_setPadMode(brainPin, mode);
+		}
+	#endif
+#endif /* EFI_PROD_CODE */
+
+	brain_pin_markUnused(brainPin);
+}
+
+/**
+ * This method would set an error condition if pin is already used
+ */
+void efiSetPadMode(const char *msg, brain_pin_e brainPin, iomode_t mode) {
+	if (!isBrainPinValid(brainPin)) {
+		// No pin configured, nothing to do here.
+		return;
+	}
+
+	bool wasUsed = brain_pin_markUsed(brainPin, msg);
+
+	if (!wasUsed) {
+		efiSetPadModeWithoutOwnershipAcquisition(msg, brainPin, mode);
+	}
+}
+
+void efiSetPadModeWithoutOwnershipAcquisition(const char *msg, brain_pin_e brainPin, iomode_t mode) {
+#if EFI_PROD_CODE
+	/*check if on-chip pin or external */
+	if (brain_pin_is_onchip(brainPin)) {
+		/* on-chip */
+		ioportid_t port = getHwPort(msg, brainPin);
+		ioportmask_t pin = getHwPin(msg, brainPin);
+		/* paranoid */
+		if (port == GPIO_NULL)
+			return;
+
+		palSetPadMode(port, pin, mode);
+	}
+	#if (BOARD_EXT_GPIOCHIPS > 0)
+		else {
+			gpiochips_setPadMode(brainPin, mode);
+		}
+	#endif
+
+#endif /* EFI_PROD_CODE */
+}
+
+#if EFI_PROD_CODE
 
 #if EFI_ENGINE_CONTROL
 #include "main_trigger_callback.h"
 #endif /* EFI_ENGINE_CONTROL */
 
-static LoggingWithStorage logger("io_pins");
-
 bool efiReadPin(brain_pin_e pin) {
+	if (!isBrainPinValid(pin))
+		return false;
 	if (brain_pin_is_onchip(pin))
 		return palReadPad(getHwPort("readPin", pin), getHwPin("readPin", pin));
 	#if (BOARD_EXT_GPIOCHIPS > 0)
@@ -38,54 +98,6 @@ bool efiReadPin(brain_pin_e pin) {
 
 	/* incorrect pin */
 	return false;
-}
-
-/**
- * This method would set an error condition if pin is already used
- */
-void efiSetPadMode(const char *msg, brain_pin_e brainPin, iomode_t mode)
-{
-	bool wasUsed = brain_pin_markUsed(brainPin, msg);
-
-	if (!wasUsed) {
-		/*check if on-chip pin or external */
-		if (brain_pin_is_onchip(brainPin)) {
-			/* on-cip */
-			ioportid_t port = getHwPort(msg, brainPin);
-			ioportmask_t pin = getHwPin(msg, brainPin);
-			/* paranoid */
-			if (port == GPIO_NULL)
-				return;
-
-			palSetPadMode(port, pin, mode);
-		}
-		#if (BOARD_EXT_GPIOCHIPS > 0)
-			else {
-				gpiochips_setPadMode(brainPin, mode);
-			}
-		#endif
-	}
-}
-
-void efiSetPadUnused(brain_pin_e brainPin)
-{
-	/* input with pull up, is it safe? */
-	iomode_t mode = PAL_STM32_MODE_INPUT | PAL_STM32_PUPDR_PULLUP;
-
-	if (brain_pin_is_onchip(brainPin)) {
-		ioportid_t port = getHwPort("unused", brainPin);
-		ioportmask_t pin = getHwPin("unused", brainPin);
-
-		/* input with pull up, is it safe? */
-		palSetPadMode(port, pin, mode);
-	}
-	#if (BOARD_EXT_GPIOCHIPS > 0)
-		else {
-			gpiochips_setPadMode(brainPin, mode);
-		}
-	#endif
-
-	brain_pin_markUnused(brainPin);
 }
 
 iomode_t getInputMode(pin_input_mode_e mode) {
@@ -100,21 +112,22 @@ iomode_t getInputMode(pin_input_mode_e mode) {
 	}
 }
 
-#if HAL_USE_ICU
-static char icuError[30];
-
-void efiIcuStart(const char *msg, ICUDriver *icup, const ICUConfig *config) {
-	if (icup->state != ICU_STOP && icup->state != ICU_READY) {
-		chsnprintf(icuError, sizeof(icuError), "ICU already used %s", msg);
-		firmwareError(CUSTOM_ERR_6679, icuError);
-		return;
-	}
-	icuStart(icup, config);
+void writePad(const char *msg, brain_pin_e pin, int bit) {
+	palWritePad(getHwPort(msg, pin), getHwPin(msg, pin), bit);
 }
-#endif /* HAL_USE_ICU */
 
-#else
+#else /* EFI_PROD_CODE */
+
+// This has been made global so we don't need to worry about efiReadPin having access the object
+//  we store it in, every time we need to use efiReadPin.
+bool mockPinStates[BRAIN_PIN_COUNT];
+
 bool efiReadPin(brain_pin_e pin) {
-	return false;
+	return mockPinStates[static_cast<int>(pin)];
 }
+
+void setMockState(brain_pin_e pin, bool state) {
+	mockPinStates[static_cast<int>(pin)] = state;
+}
+
 #endif /* EFI_PROD_CODE */

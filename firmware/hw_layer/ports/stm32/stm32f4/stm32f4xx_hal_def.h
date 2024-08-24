@@ -45,7 +45,11 @@
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f4xx.h"
+#ifdef AT32F4XX
+  #include "at32f4xx.h"
+#else
+  #include "stm32f4xx.h"
+#endif
 //#include "Legacy/stm32_hal_legacy.h"
 #include <stdio.h>
 
@@ -102,9 +106,13 @@ typedef enum
   */
 #define __HAL_RESET_HANDLE_STATE(__HANDLE__) ((__HANDLE__)->State = 0)
 
+#ifndef USE_RTOS
+#define USE_RTOS 0
+#endif
+
 #if (USE_RTOS == 1)
   /* Reserved for future use */
-  #error “USE_RTOS should be 0 in the current HAL release”
+  #error ï¿½USE_RTOS should be 0 in the current HAL releaseï¿½
 #else
   #define __HAL_LOCK(__HANDLE__)                                           \
                                 do{                                        \

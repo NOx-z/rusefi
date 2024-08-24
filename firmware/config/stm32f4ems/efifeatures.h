@@ -2,6 +2,7 @@
  * @file efifeatures.h
  *
  * @brief In this header we can configure which firmware modules are used.
+ * See config/boards which are often overriding some of the defaults via .mk and/or .env files
  *
  * @date Aug 29, 2013
  * @author Andrey Belomutskiy, (c) 2012-2020
@@ -9,41 +10,105 @@
 
 #pragma once
 
+#include <rusefi/true_false.h>
+
 #define EFI_GPIO_HARDWARE TRUE
 
+#ifndef SENT_CHANNELS_NUM
+#define SENT_CHANNELS_NUM 1
+#endif
+
+#ifndef EFI_BOOST_CONTROL
 #define EFI_BOOST_CONTROL TRUE
+#endif
 
-#define EFI_LAUNCH_CONTROL FALSE
+#ifndef EFI_BOSCH_YAW
+#define EFI_BOSCH_YAW FALSE
+#endif
 
-#define EFI_FSIO TRUE
+#ifndef EFI_WIFI
+#define EFI_WIFI FALSE
+#endif
+
+#ifndef EFI_WS2812
+#define EFI_WS2812 FALSE
+#endif
+
+#ifndef EFI_DAC
+#define EFI_DAC FALSE
+#endif
+
+#ifndef EFI_LAUNCH_CONTROL
+#define EFI_LAUNCH_CONTROL TRUE
+#endif
+
+#ifndef EFI_ANTILAG_SYSTEM
+#define EFI_ANTILAG_SYSTEM TRUE
+#endif
+
+#ifndef EFI_BACKUP_SRAM
+#define EFI_BACKUP_SRAM TRUE
+#endif
+
+#ifndef EFI_HELLA_OIL
+#define EFI_HELLA_OIL FALSE
+#endif
+
+#ifndef EFI_USE_OPENBLT
+#define EFI_USE_OPENBLT FALSE
+#endif
+
+#ifndef EFI_ETHERNET
+#define EFI_ETHERNET FALSE
+#endif
+
+#ifndef EFI_DFU_JUMP
+#define EFI_DFU_JUMP TRUE
+#endif
+
+#ifndef EFI_BOR_LEVEL
+#define EFI_BOR_LEVEL TRUE
+#endif
+
+#ifndef EFI_DYNO_VIEW
+#define EFI_DYNO_VIEW TRUE
+#endif
 
 #ifndef EFI_CDM_INTEGRATION
-#define EFI_CDM_INTEGRATION TRUE
+#define EFI_CDM_INTEGRATION FALSE
 #endif
 
 #ifndef EFI_TOOTH_LOGGER
 #define EFI_TOOTH_LOGGER TRUE
 #endif
 
+#ifndef EFI_TEXT_LOGGING
 #define EFI_TEXT_LOGGING TRUE
+#endif
 
-#define EFI_PWM_TESTER FALSE
+#define EFI_ACTIVE_CONFIGURATION_IN_FLASH FALSE
 
-#define EFI_MC33816 TRUE
+#ifndef EFI_MC33816
+#define EFI_MC33816 FALSE
+#endif
 
-#define HAL_USE_USB_MSD FALSE
+#ifndef EFI_HPFP
+#define EFI_HPFP TRUE
+#endif
 
-#define EFI_ENABLE_CRITICAL_ENGINE_STOP TRUE
-#define EFI_ENABLE_ENGINE_WARNING TRUE
+#ifndef EFI_HD_ACR
+#define EFI_HD_ACR FALSE
+#endif
 
-#define EFI_USE_CCM TRUE
+#ifndef SC_BUFFER_SIZE
+#define SC_BUFFER_SIZE 4000
+#endif
 
 /**
  * if you have a 60-2 trigger, or if you just want better performance, you
  * probably want EFI_ENABLE_ASSERTS to be FALSE. Also you would probably want to FALSE
  * CH_DBG_ENABLE_CHECKS
  * CH_DBG_ENABLE_ASSERTS
- * CH_DBG_ENABLE_TRACE
  * in chconf.h
  *
  */
@@ -51,10 +116,9 @@
  #define EFI_ENABLE_ASSERTS TRUE
 #endif /* EFI_ENABLE_ASSERTS */
 
-#if !defined(EFI_ENABLE_MOCK_ADC)
- #define EFI_ENABLE_MOCK_ADC TRUE
-#endif /* EFI_ENABLE_MOCK_ADC */
-
+#ifndef EFI_CLOCK_LOCKS
+#define EFI_CLOCK_LOCKS TRUE
+#endif
 
 //#define EFI_UART_ECHO_TEST_MODE TRUE
 
@@ -65,23 +129,31 @@
 #define EFI_LOGIC_ANALYZER TRUE
 #endif
 
-#ifndef EFI_ICU_INPUTS
-#define EFI_ICU_INPUTS TRUE
-#endif
-
 #ifndef HAL_TRIGGER_USE_PAL
-#define HAL_TRIGGER_USE_PAL FALSE
+#define HAL_TRIGGER_USE_PAL TRUE
 #endif /* HAL_TRIGGER_USE_PAL */
+
+#ifndef HAL_TRIGGER_USE_ADC
+#define HAL_TRIGGER_USE_ADC FALSE
+#endif /* HAL_TRIGGER_USE_ADC */
 
 /**
  * TunerStudio support.
  */
+#ifndef EFI_TUNER_STUDIO
 #define EFI_TUNER_STUDIO TRUE
+#endif
+
+#ifndef EFI_TS_SCATTER
+#define EFI_TS_SCATTER TRUE
+#endif
 
 /**
  * Bluetooth UART setup support.
  */
-#define EFI_BLUETOOTH_SETUP FALSE
+#ifndef EFI_BLUETOOTH_SETUP
+#define EFI_BLUETOOTH_SETUP TRUE
+#endif /* EFI_BLUETOOTH_SETUP */
 
 /**
  * TunerStudio debug output
@@ -93,17 +165,24 @@
 /**
  * Dev console support.
  */
+#ifndef EFI_CLI_SUPPORT
 #define EFI_CLI_SUPPORT TRUE
+#endif
 
+#ifndef EFI_RTC
 #define EFI_RTC TRUE
+#endif
 
+#ifndef EFI_ALTERNATOR_CONTROL
 #define EFI_ALTERNATOR_CONTROL TRUE
+#endif
 
-#define EFI_AUX_PID TRUE
+#ifndef EFI_VVT_PID
+#define EFI_VVT_PID TRUE
+#endif
 
 #define EFI_SIGNAL_EXECUTOR_SLEEP FALSE
 #define EFI_SIGNAL_EXECUTOR_ONE_TIMER TRUE
-#define EFI_SIGNAL_EXECUTOR_HW_TIMER FALSE
 
 #define FUEL_MATH_EXTREME_LOGGING FALSE
 
@@ -111,9 +190,17 @@
 
 #define TRIGGER_EXTREME_LOGGING FALSE
 
-#ifndef EFI_INTERNAL_FLASH
-#define EFI_INTERNAL_FLASH TRUE
+#ifndef EFI_STORAGE_INT_FLASH
+// historically we've started with low-level flash access with our own redundancy logic
+// todo: migrate to EFI_STORAGE_MFS which provides same functionality and more!
+#define EFI_STORAGE_INT_FLASH   TRUE
 #endif
+
+#ifndef EFI_STORAGE_MFS
+// todo: this higher level API should replace EFI_STORAGE_INT_FLASH legacy implementation
+#define EFI_STORAGE_MFS         FALSE
+#endif
+
 
 /**
  * Usually you need shaft position input, but maybe you do not need it?
@@ -124,73 +211,97 @@
 
 /**
  * Maybe we are just sniffing what's going on?
+ * EFI_ENGINE_CONTROL is covering injectors and spark control
  */
+#ifndef EFI_ENGINE_CONTROL
 #define EFI_ENGINE_CONTROL TRUE
+#endif
 
 /**
  * MCP42010 digital potentiometer support. This could be useful if you are stimulating some
  * stock ECU
  */
-//#define EFI_POTENTIOMETER FALSE
-#define EFI_POTENTIOMETER TRUE
+#ifndef EFI_POTENTIOMETER
+#define EFI_POTENTIOMETER FALSE
+#endif
 
 #ifndef BOARD_TLE6240_COUNT
-#define BOARD_TLE6240_COUNT         1
+#define BOARD_TLE6240_COUNT         0
 #endif
 
 #ifndef BOARD_MC33972_COUNT
-#define BOARD_MC33972_COUNT			1
+#define BOARD_MC33972_COUNT			0
 #endif
 
 #ifndef BOARD_TLE8888_COUNT
-#define BOARD_TLE8888_COUNT 	1
+#define BOARD_TLE8888_COUNT 	0
+#endif
+
+#ifndef BOARD_L9779_COUNT
+#define BOARD_L9779_COUNT 	0
+#endif
+
+#ifndef BOARD_DRV8860_COUNT
+#define BOARD_DRV8860_COUNT         0
+#endif
+
+#ifndef BOARD_MC33810_COUNT
+#define BOARD_MC33810_COUNT		0
+#endif
+
+#ifndef BOARD_TLE9104_COUNT
+#define BOARD_TLE9104_COUNT 0
 #endif
 
 #define EFI_ANALOG_SENSORS TRUE
 
 #ifndef EFI_MAX_31855
-#define EFI_MAX_31855 TRUE
+#define EFI_MAX_31855 FALSE
 #endif
 
 #define EFI_MCP_3208 FALSE
 
 #ifndef EFI_HIP_9011
-#define EFI_HIP_9011 TRUE
+// disabling for now - DMA conflict with SPI1
+#define EFI_HIP_9011 FALSE
 #endif
 
-#ifndef EFI_CJ125
-#define EFI_CJ125 TRUE
-#endif
-
-#if !defined(EFI_MEMS)
- #define EFI_MEMS FALSE
+#if !defined(EFI_ONBOARD_MEMS)
+ #define EFI_ONBOARD_MEMS FALSE
 #endif
 
 #ifndef EFI_INTERNAL_ADC
 #define EFI_INTERNAL_ADC TRUE
 #endif
 
-#define EFI_NARROW_EGO_AVERAGING TRUE
-
-#define EFI_DENSO_ADC FALSE
+#define EFI_USE_FAST_ADC TRUE
 
 #ifndef EFI_CAN_SUPPORT
 #define EFI_CAN_SUPPORT TRUE
 #endif
 
-#ifndef EFI_HD44780_LCD
-#define EFI_HD44780_LCD TRUE
+#if !defined(EFI_CAN_SERIAL) && EFI_CAN_SUPPORT
+#define EFI_CAN_SERIAL TRUE
 #endif
 
-#ifndef EFI_LCD
-#define EFI_LCD TRUE
+#if !defined(EFI_CAN_GPIO) && EFI_CAN_SUPPORT
+// see CAN_PIN_0
+#define EFI_CAN_GPIO TRUE
+#endif
+
+#define EFI_WIDEBAND_FIRMWARE_UPDATE TRUE
+
+#ifndef EFI_AUX_SERIAL
+#define EFI_AUX_SERIAL TRUE
 #endif
 
 #ifndef EFI_IDLE_CONTROL
 #define EFI_IDLE_CONTROL TRUE
 #endif
 
-#define EFI_IDLE_PID_CIC FALSE
+#ifndef EFI_IDLE_PID_CIC
+#define EFI_IDLE_PID_CIC TRUE
+#endif
 
 /**
  * Control the main power relay based on measured ignition voltage (Vbatt)
@@ -199,15 +310,13 @@
 #define EFI_MAIN_RELAY_CONTROL FALSE
 #endif
 
-#ifndef EFI_PWM
-#define EFI_PWM TRUE
-#endif
-
 #ifndef EFI_VEHICLE_SPEED
 #define EFI_VEHICLE_SPEED TRUE
 #endif
 
-#define EFI_FUEL_PUMP TRUE
+#ifndef EFI_TCU
+#define EFI_TCU FALSE
+#endif
 
 #ifndef EFI_ENGINE_EMULATOR
 #define EFI_ENGINE_EMULATOR TRUE
@@ -218,31 +327,57 @@
 #endif
 
 /**
- * This macros is used to hide hardware-specific pieces of the code from unit tests and simulator, so it only makes
- * sense in folders exposed to the tests projects (simulator and unit tests).
- * This macros is NOT about taking out logging in general.
- * See also EFI_UNIT_TEST
- * See also EFI_SIMULATOR
- * todo: do we want to rename any of these three options?
- */
-#define EFI_PROD_CODE TRUE
-
-/**
  * Do we need file logging (like SD card) logic?
+ * See also USE_FATFS
  */
 #ifndef EFI_FILE_LOGGING
 #define EFI_FILE_LOGGING TRUE
+#endif
+
+#ifndef EFI_EMBED_INI_MSD
+#define EFI_EMBED_INI_MSD TRUE
 #endif
 
 #ifndef EFI_USB_SERIAL
 #define EFI_USB_SERIAL TRUE
 #endif
 
-/**
- * Should PnP engine configurations be included in the binary?
- */
-#ifndef EFI_INCLUDE_ENGINE_PRESETS
-#define EFI_INCLUDE_ENGINE_PRESETS TRUE
+#define EFI_CONSOLE_USB_DEVICE SDU1
+
+#if defined(EFI_HAS_EXT_SDRAM)
+	#ifndef ENABLE_PERF_TRACE
+	#define ENABLE_PERF_TRACE TRUE
+	#endif // ENABLE_PERF_TRACE
+	#define LUA_USER_HEAP (1 * 1024 * 1024)
+#elif defined(EFI_IS_F42x)
+	// F42x has more memory, so we can:
+	//  - use compressed USB MSD image (requires 32k of memory)
+	//  - use perf trace (requires ~16k of memory)
+	#define EFI_USE_COMPRESSED_INI_MSD TRUE
+	#define ENABLE_PERF_TRACE TRUE
+
+	#define LUA_USER_HEAP 25000
+#else
+	#ifndef ENABLE_PERF_TRACE
+	// small memory F40x can't fit perf trace
+	#define ENABLE_PERF_TRACE FALSE
+	#endif // ENABLE_PERF_TRACE
+
+	#ifndef LUA_USER_HEAP
+	#define LUA_USER_HEAP 25000
+	#endif
+#endif
+
+#ifndef EFI_USE_COMPRESSED_INI_MSD
+#define EFI_USE_COMPRESSED_INI_MSD FALSE
+#endif
+
+#ifndef EFI_LUA
+#define EFI_LUA TRUE
+#endif
+
+#ifndef EFI_LUA_LOOKUP
+#define EFI_LUA_LOOKUP TRUE
 #endif
 
 #ifndef EFI_ENGINE_SNIFFER
@@ -250,59 +385,56 @@
 #endif
 
 #define EFI_HISTOGRAMS FALSE
-#define EFI_SENSOR_CHART TRUE
 
-#if defined __GNUC__
+#ifndef EFI_SENSOR_CHART
+#define EFI_SENSOR_CHART TRUE
+#endif
+
+#ifndef EFI_PERF_METRICS
 #define EFI_PERF_METRICS FALSE
+#endif
+
+#ifndef DL_OUTPUT_BUFFER
 #define DL_OUTPUT_BUFFER 6500
-#else
-#define EFI_PERF_METRICS FALSE
-#define DL_OUTPUT_BUFFER 8000
 #endif
 
 /**
  * Do we need GPS logic?
  */
-#define EFI_UART_GPS TRUE
-//#define EFI_UART_GPS FALSE
+#ifndef EFI_UART_GPS
+#define EFI_UART_GPS FALSE
+#endif
 
-#define EFI_SERVO TRUE
-
+#ifndef EFI_ELECTRONIC_THROTTLE_BODY
 #define EFI_ELECTRONIC_THROTTLE_BODY TRUE
-//#define EFI_ELECTRONIC_THROTTLE_BODY FALSE
+#endif
 
 /**
  * Do we need Malfunction Indicator blinking logic?
  */
+#ifndef EFI_MALFUNCTION_INDICATOR
 #define EFI_MALFUNCTION_INDICATOR TRUE
-//#define EFI_MALFUNCTION_INDICATOR FALSE
+#endif
 
+#ifndef CONSOLE_MAX_ACTIONS
 #define CONSOLE_MAX_ACTIONS 180
+#endif
 
+#ifndef EFI_MAP_AVERAGING
 #define EFI_MAP_AVERAGING TRUE
-//#define EFI_MAP_AVERAGING FALSE
+#endif
 
 // todo: most of this should become configurable
 
-// todo: switch to continues ADC conversion for slow ADC?
-// https://github.com/rusefi/rusefi/issues/630
-// todo: switch to continues ADC conversion for fast ADC?
-#define EFI_INTERNAL_FAST_ADC_PWM	&PWMD4
+// todo: switch to continuous ADC conversion for fast ADC?
+#define EFI_INTERNAL_FAST_ADC_GPT	&GPTD6
 
 #define EFI_SPI1_AF 5
-
 #define EFI_SPI2_AF 5
-
-/**
- * This section is for right-side center SPI
- */
-
 #define EFI_SPI3_AF 6
-
-#define EFI_I2C_SCL_BRAIN_PIN GPIOB_6
-
-#define EFI_I2C_SDA_BRAIN_PIN GPIOB_7
-#define EFI_I2C_AF 4
+#define EFI_SPI4_AF 5
+#define EFI_SPI5_AF 5
+#define EFI_SPI6_AF 6
 
 /**
  * Patched version of ChibiOS/RT support extra details in the system error messages
@@ -327,52 +459,35 @@
  *  PE5
  */
 
-
-// todo: start using consoleUartDevice? Not sure
-#ifndef EFI_CONSOLE_SERIAL_DEVICE
-#define EFI_CONSOLE_SERIAL_DEVICE (&SD3)
+#ifndef EFI_USE_UART_DMA
+#define EFI_USE_UART_DMA TRUE
 #endif
 
-/**
- * Use 'HAL_USE_UART' DMA-mode driver instead of 'HAL_USE_SERIAL'
- *
- * See also
- *  STM32_SERIAL_USE_USARTx
- *  STM32_UART_USE_USARTx
- * in mcuconf.h
- */
-#define TS_UART_DMA_MODE FALSE
-
-#define TS_UART_DEVICE (&UARTD3)
-#define TS_SERIAL_DEVICE (&SD3)
-
-// todo: add DMA-mode for Console?
-#if (TS_UART_DMA_MODE || TS_UART_MODE)
-#undef EFI_CONSOLE_SERIAL_DEVICE
+#ifndef AUX_SERIAL_DEVICE
+#define AUX_SERIAL_DEVICE (&SD6)
 #endif
 
-// todo: start using consoleSerialTxPin? Not sure
-#ifndef EFI_CONSOLE_TX_PORT
-#define EFI_CONSOLE_TX_PORT GPIOC
+#ifndef EFI_CONSOLE_TX_BRAIN_PIN
+#define EFI_CONSOLE_TX_BRAIN_PIN Gpio::C10
 #endif
-#ifndef EFI_CONSOLE_TX_PIN
-#define EFI_CONSOLE_TX_PIN 10
-#endif
-// todo: start using consoleSerialRxPin? Not sure
-#ifndef EFI_CONSOLE_RX_PORT
-#define EFI_CONSOLE_RX_PORT GPIOC
-#endif
-#ifndef EFI_CONSOLE_RX_PIN
-#define EFI_CONSOLE_RX_PIN 11
+
+#ifndef EFI_CONSOLE_RX_BRAIN_PIN
+#define EFI_CONSOLE_RX_BRAIN_PIN Gpio::C11
 #endif
 // todo: this should be detected automatically based on pin selection
+// https://github.com/rusefi/rusefi/issues/3536
+#ifndef EFI_CONSOLE_AF
 #define EFI_CONSOLE_AF 7
+#endif
 
 // todo: this should be detected automatically based on pin selection
+// https://github.com/rusefi/rusefi/issues/3536
+#ifndef TS_SERIAL_AF
 #define TS_SERIAL_AF 7
+#endif
 
-#ifndef LED_ERROR_BRAIN_PIN
-#define LED_ERROR_BRAIN_PIN GPIOD_14
+#ifndef LED_CRITICAL_ERROR_BRAIN_PIN
+#define LED_CRITICAL_ERROR_BRAIN_PIN Gpio::D14
 #endif
 
 // USART1 -> check defined STM32_SERIAL_USE_USART1
@@ -380,18 +495,10 @@
 #define GPS_SERIAL_DEVICE &SD1
 #define GPS_SERIAL_SPEED 38400
 
-#ifndef CONFIG_RESET_SWITCH_PORT
-// looks like this feature is not extremely popular, we can try living without it now :)
-//#define CONFIG_RESET_SWITCH_PORT GPIOD
+#ifndef EFI_SENT_SUPPORT
+#define EFI_SENT_SUPPORT        FALSE
 #endif
 
-#ifndef CONFIG_RESET_SWITCH_PIN
-#define CONFIG_RESET_SWITCH_PIN 6
+#ifndef EFI_FLASH_WRITE_THREAD
+#define EFI_FLASH_WRITE_THREAD FALSE
 #endif
-
-/**
- * This is the size of the MemoryStream used by chvprintf
- */
-#define INTERMEDIATE_LOGGING_BUFFER_SIZE 2000
-
-#define EFI_JOYSTICK TRUE

@@ -10,12 +10,29 @@
 
 #pragma once
 
-#include "engine.h"
-void initAlternatorCtrl(Logging *sharedLogger);
+void initAlternatorCtrl();
+
 void setAltPFactor(float p);
 void setAltIFactor(float p);
 void setAltDFactor(float p);
-void showAltInfo(void);
-void setDefaultAlternatorParameters(DECLARE_CONFIG_PARAMETER_SIGNATURE);
 
-void onConfigurationChangeAlternatorCallback(engine_configuration_s *previousConfiguration);
+class AlternatorController : public EngineModule, public ClosedLoopController<float, percent_t> {
+public:
+	void init();
+	void pidReset();
+
+	// EngineModule implementation
+	void onFastCallback() override;
+	void onConfigurationChange(engine_configuration_s const * previousConfiguration) override;
+
+	// ClosedLoopController implementation
+	expected<float> getSetpoint() override;
+	expected<float> observePlant() override;
+	expected<percent_t> getOpenLoop(float setpoint) override;
+	expected<percent_t> getClosedLoop(float targetVoltage, float vBattVoltage) override;
+	void setOutput(expected<percent_t> outputValue) override;
+
+private:
+	Pid alternatorPid;
+};
+

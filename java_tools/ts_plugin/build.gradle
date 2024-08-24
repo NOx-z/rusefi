@@ -1,0 +1,34 @@
+plugins {
+    id 'java-library'
+    id 'com.github.johnrengelman.shadow' version "${shadowVersion}"
+}
+
+apply from: '../../android/dependencies.gradle'
+
+dependencies {
+    api project(':core_ui')
+    api project(':shared_ui')
+    api project(':ecu_io')
+    api project(':inifile')
+    api project(':ts_plugin_launcher')
+    testImplementation global_libs.mockito
+    testImplementation testFixtures( project(':ecu_io'))
+    implementation files('../ts_plugin_launcher/lib/TunerStudioPluginAPI.jar')
+}
+
+jar {
+    manifest {
+        attributes(
+                'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ss'),
+                'Signature-Vendor': 'rusEFI LLC',
+        )
+    }
+}
+
+shadowJar {
+    archiveBaseName = 'rusefi_plugin_body'
+    archiveClassifier = ''
+    manifest {
+        inheritFrom project.tasks.jar.manifest
+    }
+}

@@ -1,0 +1,12 @@
+plugins {
+  id 'java-library'
+  id 'com.github.johnrengelman.shadow' version "${shadowVersion}"
+}
+
+apply from: '../../java_tools/dependencies.gradle'
+
+dependencies {
+    api project(':inifile')
+    api global_libs.snakeyaml
+    api 'org.apache.commons:commons-math3:3.6.1'
+}

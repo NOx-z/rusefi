@@ -6,61 +6,58 @@
  * @author Matthew Kennedy, (c) 2019
  */
 
-#include "engine_configuration.h"
-#include "engine_math.h"
-#include "allsensors.h"
-#include "fsio_impl.h"
-
-EXTERN_ENGINE;
+#include "pch.h"
+#include "proteus_meta.h"
 
 static const brain_pin_e injPins[] = {
-	GPIOD_7,
-	GPIOG_9,
-	GPIOG_10,
-	GPIOG_11,
-	GPIOG_12,
-	GPIOG_13,
-	GPIOG_14,
-	GPIOB_4,
-	GPIOB_5,
-	GPIOB_6,
-	GPIOB_7,
-	GPIOB_8
+    Gpio::PROTEUS_LS_1,
+	Gpio::PROTEUS_LS_2,
+	Gpio::PROTEUS_LS_3,
+	Gpio::PROTEUS_LS_4,
+	Gpio::PROTEUS_LS_5,
+	Gpio::PROTEUS_LS_6,
+	Gpio::PROTEUS_LS_7,
+	Gpio::PROTEUS_LS_8,
+	Gpio::PROTEUS_LS_9,
+	Gpio::PROTEUS_LS_10,
+	Gpio::PROTEUS_LS_11,
+	Gpio::PROTEUS_LS_12
 };
 
 static const brain_pin_e ignPins[] = {
-	GPIOD_4,
-	GPIOD_3,
-	GPIOC_9,
-	GPIOC_8,
-	GPIOC_7,
-	GPIOG_8,
-	GPIOG_7,
-	GPIOG_6,
-	GPIOG_5,
-	GPIOG_4,
-	GPIOG_3,
-	GPIOG_2,
+	Gpio::PROTEUS_IGN_1,
+	Gpio::PROTEUS_IGN_2,
+	Gpio::PROTEUS_IGN_3,
+	Gpio::PROTEUS_IGN_4,
+	Gpio::PROTEUS_IGN_5,
+	Gpio::PROTEUS_IGN_6,
+	Gpio::PROTEUS_IGN_7,
+	Gpio::PROTEUS_IGN_8,
+	Gpio::PROTEUS_IGN_9,
+	Gpio::PROTEUS_IGN_10,
+	Gpio::PROTEUS_IGN_11,
+	Gpio::PROTEUS_IGN_12,
 };
 
 static void setInjectorPins() {
 	copyArray(engineConfiguration->injectionPins, injPins);
-	engineConfiguration->injectionPinMode = OM_DEFAULT;
 }
 
 static void setIgnitionPins() {
 	copyArray(engineConfiguration->ignitionPins, ignPins);
-	engineConfiguration->ignitionPinMode = OM_DEFAULT;
 }
 
-void setSdCardConfigurationOverrides(void) {
+// PE3 is error LED, configured in board.mk
+Gpio getCommsLedPin() {
+	return Gpio::E4;
 }
 
-static void setLedPins() {
-	CONFIG(warningLedPin) = GPIOE_3;
-	CONFIG(communicationLedPin) = GPIOE_4;
-	engineConfiguration->runningLedPin = GPIOE_5;
-	engineConfiguration->triggerErrorPin = GPIOE_6;
+Gpio getRunningLedPin() {
+	return Gpio::E5;
+}
+
+Gpio getWarningLedPin() {
+	return Gpio::E6;
 }
 
 static void setupVbatt() {
@@ -69,7 +66,9 @@ static void setupVbatt() {
 
 	// 82k high side/10k low side = 9.2
 	engineConfiguration->vbattDividerCoeff = (92.0f / 10.0f);
-	//engineConfiguration->vbattAdcChannel = TODO;
+
+	// Battery sense on PA7
+	engineConfiguration->vbattAdcChannel = EFI_ADC_7;
 
 	engineConfiguration->adcVcc = 3.3f;
 }
@@ -83,107 +82,284 @@ static void setupEtb() {
 
 	// Throttle #1
 	// PWM pin
-	engineConfiguration->etbIo[0].controlPin1 = GPIOD_12;
+	engineConfiguration->etbIo[0].controlPin = Gpio::D12;
 	// DIR pin
-	engineConfiguration->etbIo[0].directionPin1 = GPIOD_10;
+	engineConfiguration->etbIo[0].directionPin1 = Gpio::D10;
 	// Disable pin
-	engineConfiguration->etbIo[0].disablePin = GPIOD_11;
-	// Unused
-	engineConfiguration->etbIo[0].directionPin2 = GPIO_UNASSIGNED;
+	engineConfiguration->etbIo[0].disablePin = Gpio::D11;
 
 	// Throttle #2
 	// PWM pin
-	engineConfiguration->etbIo[1].controlPin1 = GPIOD_13;
+	engineConfiguration->etbIo[1].controlPin = Gpio::D13;
 	// DIR pin
-	engineConfiguration->etbIo[1].directionPin1 = GPIOD_9;
+	engineConfiguration->etbIo[1].directionPin1 = Gpio::D9;
 	// Disable pin
-	engineConfiguration->etbIo[1].disablePin = GPIOD_8;
-	// Unused
-	engineConfiguration->etbIo[1].directionPin2 = GPIO_UNASSIGNED;
+	engineConfiguration->etbIo[1].disablePin = Gpio::D8;
 
 	// we only have pwm/dir, no dira/dirb
 	engineConfiguration->etb_use_two_wires = false;
-	engineConfiguration->etbFreq = 800;
-}
-
-static void setupCanPins() {
-	engineConfiguration->canTxPin = GPIOD_1;
-	engineConfiguration->canRxPin = GPIOD_0;
 }
 
 static void setupDefaultSensorInputs() {
 	// trigger inputs
+#if VR_HW_CHECK_MODE
+	// set_trigger_input_pin 0 PE7
+	engineConfiguration->triggerInputPins[0] = PROTEUS_VR_1;
+	engineConfiguration->camInputs[0] = PROTEUS_VR_2;
+#else
 	// Digital channel 1 as default - others not set
-	engineConfiguration->triggerInputPins[0] = GPIOC_6;
-	engineConfiguration->triggerInputPins[1] = GPIO_UNASSIGNED;
-	engineConfiguration->triggerInputPins[2] = GPIO_UNASSIGNED;
-	engineConfiguration->camInputs[0] = GPIO_UNASSIGNED;
+	engineConfiguration->triggerInputPins[0] = PROTEUS_DIGITAL_1;
+	engineConfiguration->camInputs[0] = Gpio::Unassigned;
+#endif
 
-	// CLT = Analog Temp 3 = PB0
-	engineConfiguration->clt.adcChannel = EFI_ADC_8;
-	engineConfiguration->clt.config.bias_resistor = 2700;
+	engineConfiguration->triggerInputPins[1] = Gpio::Unassigned;
 
-	// IAT = Analog Temp 2 = PC5
-	engineConfiguration->iat.adcChannel = EFI_ADC_15;
-	engineConfiguration->iat.config.bias_resistor = 2700;
 
-	// TPS = Analog volt 2 = PC1
-	engineConfiguration->tps1_1AdcChannel = EFI_ADC_11;
+	engineConfiguration->clt.adcChannel = PROTEUS_IN_CLT;
+	engineConfiguration->iat.adcChannel = PROTEUS_IN_IAT;
+	engineConfiguration->tps1_1AdcChannel = PROTEUS_IN_TPS;
+	engineConfiguration->map.sensor.hwChannel = PROTEUS_IN_MAP;
 
-	// MAP = Analog volt 1 = PC0
-	engineConfiguration->map.sensor.hwChannel = EFI_ADC_10;
-
-	// No battery voltage setting - see adc_hack.cpp
-	engineConfiguration->vbattAdcChannel = EFI_ADC_NONE;
+    // see also enableAemXSeries
+	// pin #28 WBO AFR "Analog Volt 10"
+	engineConfiguration->afr.hwChannel = PROTEUS_IN_ANALOG_VOLT_10;
 }
 
-void setPinConfigurationOverrides(void) {
+static void setupSdCard() {
+	engineConfiguration->sdCardSpiDevice = SPI_DEVICE_3;
+	engineConfiguration->sdCardCsPin = Gpio::D2;
+
+	engineConfiguration->is_enabled_spi_3 = true;
+	engineConfiguration->spi3sckPin = Gpio::C10;
+	engineConfiguration->spi3misoPin = Gpio::C11;
+	engineConfiguration->spi3mosiPin = Gpio::C12;
+
+	engineConfiguration->is_enabled_spi_5 = true;
+	engineConfiguration->spi5sckPin = Gpio::F7;
+	engineConfiguration->spi5misoPin = Gpio::F8;
+	engineConfiguration->spi5mosiPin = Gpio::F9;
 }
 
-void setSerialConfigurationOverrides(void) {
-	engineConfiguration->useSerialPort = false;
-	engineConfiguration->binarySerialTxPin = GPIO_UNASSIGNED;
-	engineConfiguration->binarySerialRxPin = GPIO_UNASSIGNED;
-	engineConfiguration->consoleSerialTxPin = GPIO_UNASSIGNED;
-	engineConfiguration->consoleSerialRxPin = GPIO_UNASSIGNED;
-}
+void setBoardConfigOverrides() {
+	setupSdCard();
+	setupVbatt();
 
+	engineConfiguration->clt.config.bias_resistor = PROTEUS_DEFAULT_AT_PULLUP;
+	engineConfiguration->iat.config.bias_resistor = PROTEUS_DEFAULT_AT_PULLUP;
+
+	engineConfiguration->canTxPin = Gpio::D1;
+	engineConfiguration->canRxPin = Gpio::D0;
+
+#if defined(STM32F4) || defined(STM32F7)
+	engineConfiguration->can2RxPin = Gpio::B12;
+	engineConfiguration->can2TxPin = Gpio::B13;
+#endif
+
+	engineConfiguration->lps25BaroSensorScl = Gpio::B10;
+	engineConfiguration->lps25BaroSensorSda = Gpio::B11;
+}
 
 /**
- * @brief   Board-specific configuration code overrides.
+ * @brief   Board-specific configuration defaults.
  *
  * See also setDefaultEngineConfiguration
  *
- * @todo    Add your board-specific code, if any.
+
  */
-void setBoardConfigurationOverrides(void) {
+void setBoardDefaultConfiguration() {
 	setInjectorPins();
 	setIgnitionPins();
-	setLedPins();
-	setupVbatt();
 	setupEtb();
-	setupCanPins();
+
+	engineConfiguration->isSdCardEnabled = true;
 
 	// "required" hardware is done - set some reasonable defaults
 	setupDefaultSensorInputs();
 
-	// Some sensible defaults for other options
-	setOperationMode(engineConfiguration, FOUR_STROKE_CRANK_SENSOR);
-	engineConfiguration->trigger.type = TT_TOOTHED_WHEEL_60_2;
-	engineConfiguration->useOnlyRisingEdgeForTrigger = true;
-	setAlgorithm(LM_SPEED_DENSITY PASS_CONFIG_PARAMETER_SUFFIX);
+	engineConfiguration->enableSoftwareKnock = true;
 
-	engineConfiguration->specs.cylindersCount = 8;
-	engineConfiguration->specs.firingOrder = FO_1_8_7_2_6_5_4_3;
+#if HW_PROTEUS & EFI_PROD_CODE
+	engineConfiguration->mainRelayPin = Gpio::PROTEUS_LS_12;
+	engineConfiguration->fanPin = Gpio::PROTEUS_LS_11;
+	engineConfiguration->fuelPumpPin = Gpio::PROTEUS_LS_10;
+#endif // HW_PROTEUS
 
-	engineConfiguration->ignitionMode = IM_INDIVIDUAL_COILS;
-	engineConfiguration->crankingInjectionMode = IM_SIMULTANEOUS;
-	engineConfiguration->injectionMode = IM_SIMULTANEOUS;
-
-	// output 13
-	CONFIG(mainRelayPin) = GPIOB_9;
-	// output 15
-	CONFIG(fanPin) = GPIOE_1;
-	// output 16
-	CONFIG(fuelPumpPin) = GPIOE_2;
+	// If we're running as hardware CI, borrow a few extra pins for that
+#ifdef HARDWARE_CI
+	engineConfiguration->triggerSimulatorPins[0] = Gpio::G3;
+	engineConfiguration->triggerSimulatorPins[1] = Gpio::G2;
+#endif
 }
+
+void boardPrepareForStop() {
+	// Wake on the CAN RX pin
+	palEnableLineEvent(PAL_LINE(GPIOD, 0), PAL_EVENT_MODE_RISING_EDGE);
+}
+
+#if HW_PROTEUS
+static Gpio PROTEUS_SLINGSHOT_OUTPUTS[] = {
+    Gpio::PROTEUS_LS_1, // inj 1
+    Gpio::PROTEUS_LS_2, // inj 2
+    Gpio::PROTEUS_LS_3, // inj 3
+    Gpio::PROTEUS_LS_4, // inj 4
+};
+
+static Gpio PROTEUS_SBC_OUTPUTS[] = {
+    Gpio::PROTEUS_LS_14, // inj 1 four times
+    Gpio::PROTEUS_LS_14, // inj 1 four times
+    Gpio::PROTEUS_LS_14, // inj 1 four times
+    Gpio::PROTEUS_LS_14, // inj 1 four times
+
+    Gpio::PROTEUS_LS_15, // inj 4 four times
+    Gpio::PROTEUS_LS_15, // inj 4 four times
+    Gpio::PROTEUS_LS_15, // inj 4 four times
+    Gpio::PROTEUS_LS_15, // inj 4 four times
+
+};
+
+static Gpio PROTEUS_M73_OUTPUTS[] = {
+    Gpio::PROTEUS_LS_1, // inj 1
+    Gpio::PROTEUS_LS_2, // inj 2
+    Gpio::PROTEUS_LS_3,
+    Gpio::PROTEUS_LS_4,
+    Gpio::PROTEUS_LS_5,
+    Gpio::PROTEUS_LS_6,
+    Gpio::PROTEUS_LS_7,
+    Gpio::PROTEUS_LS_8,
+    Gpio::PROTEUS_LS_9, // inj 9
+    Gpio::PROTEUS_LS_10, // inj 10
+    Gpio::PROTEUS_LS_11, // inj 11
+    Gpio::PROTEUS_LS_12, // inj 12
+    Gpio::PROTEUS_LS_14, // starter control or aux output
+    Gpio::PROTEUS_LS_15, // radiator fan relay output white
+
+
+    //Gpio::PROTEUS_LS_13, // main relay
+    //Gpio::PROTEUS_LS_16, // main relay
+};
+
+static Gpio PROTEUS_CANAM_OUTPUTS[] = {
+    Gpio::PROTEUS_LS_1, // inj 1
+    Gpio::PROTEUS_LS_2, // inj 2
+    Gpio::PROTEUS_LS_3, // inj 3
+    Gpio::PROTEUS_LS_12, // main relay
+    Gpio::PROTEUS_LS_14, // starter
+    Gpio::PROTEUS_LS_15, // intercooler fan
+    Gpio::PROTEUS_LS_4, // accessories relay
+	Gpio::PROTEUS_IGN_1,
+	Gpio::PROTEUS_IGN_2,
+	Gpio::PROTEUS_IGN_3,
+};
+
+static Gpio PROTEUS_HARLEY_OUTPUTS[] = {
+    Gpio::PROTEUS_LS_1,
+    Gpio::PROTEUS_LS_2,
+	Gpio::PROTEUS_IGN_1,
+	Gpio::PROTEUS_IGN_2,
+	Gpio::PROTEUS_IGN_8, // ACR
+	Gpio::PROTEUS_IGN_9, // ACR2
+};
+
+int getBoardMetaLowSideOutputsCount() {
+    if (engineConfiguration->engineType == engine_type_e::MAVERICK_X3) {
+        return getBoardMetaOutputsCount();
+    }
+    if (engineConfiguration->engineType == engine_type_e::HARLEY) {
+        return getBoardMetaOutputsCount();
+    }
+    if (engineConfiguration->engineType == engine_type_e::GM_SBC) {
+        return getBoardMetaOutputsCount();
+    }
+    if (engineConfiguration->engineType == engine_type_e::ME17_9_MISC) {
+        return getBoardMetaOutputsCount();
+    }
+    return 16;
+}
+
+static Gpio PROTEUS_OUTPUTS[] = {
+Gpio::PROTEUS_LS_1,
+Gpio::PROTEUS_LS_2,
+Gpio::PROTEUS_LS_3,
+Gpio::PROTEUS_LS_4,
+Gpio::PROTEUS_LS_5,
+Gpio::PROTEUS_LS_6,
+Gpio::PROTEUS_LS_7,
+Gpio::PROTEUS_LS_8,
+Gpio::PROTEUS_LS_9,
+Gpio::PROTEUS_LS_10,
+Gpio::PROTEUS_LS_11,
+Gpio::PROTEUS_LS_12,
+Gpio::PROTEUS_LS_13,
+Gpio::PROTEUS_LS_14,
+Gpio::PROTEUS_LS_15,
+Gpio::PROTEUS_LS_16,
+	Gpio::PROTEUS_IGN_1,
+	Gpio::PROTEUS_IGN_2,
+	Gpio::PROTEUS_IGN_3,
+	Gpio::PROTEUS_IGN_4,
+	Gpio::PROTEUS_IGN_5,
+	Gpio::PROTEUS_IGN_6,
+	Gpio::PROTEUS_IGN_7,
+	Gpio::PROTEUS_IGN_8,
+	Gpio::PROTEUS_IGN_9,
+	Gpio::PROTEUS_IGN_10,
+	Gpio::PROTEUS_IGN_11,
+	Gpio::PROTEUS_IGN_12,
+	Gpio::PROTEUS_HS_1,
+	Gpio::PROTEUS_HS_2,
+	Gpio::PROTEUS_HS_3,
+	Gpio::PROTEUS_HS_4
+};
+
+int getBoardMetaOutputsCount() {
+    if (engineConfiguration->engineType == engine_type_e::MAVERICK_X3) {
+        return efi::size(PROTEUS_CANAM_OUTPUTS);
+    }
+    if (engineConfiguration->engineType == engine_type_e::ME17_9_MISC) {
+        return efi::size(PROTEUS_SLINGSHOT_OUTPUTS);
+    }
+    if (engineConfiguration->engineType == engine_type_e::HARLEY) {
+        return efi::size(PROTEUS_HARLEY_OUTPUTS);
+    }
+    if (engineConfiguration->engineType == engine_type_e::GM_SBC) {
+        return efi::size(PROTEUS_SBC_OUTPUTS);
+    }
+    if (engineConfiguration->engineType == engine_type_e::PROTEUS_BMW_M73) {
+        return efi::size(PROTEUS_M73_OUTPUTS);
+    }
+    return efi::size(PROTEUS_OUTPUTS);
+}
+
+int getBoardMetaDcOutputsCount() {
+    if (engineConfiguration->engineType == engine_type_e::PROTEUS_BMW_M73) {
+        return 2;
+    }
+    if (engineConfiguration->engineType == engine_type_e::ME17_9_MISC ||
+        engineConfiguration->engineType == engine_type_e::HARLEY ||
+        engineConfiguration->engineType == engine_type_e::MAVERICK_X3
+        ) {
+        return 1;
+    }
+    return 1;
+/*    return 2; proteus has two h-b ridges but stim board is short on channels to test :( */
+}
+
+Gpio* getBoardMetaOutputs() {
+    if (engineConfiguration->engineType == engine_type_e::MAVERICK_X3) {
+        return PROTEUS_CANAM_OUTPUTS;
+    }
+    if (engineConfiguration->engineType == engine_type_e::ME17_9_MISC) {
+        return PROTEUS_SLINGSHOT_OUTPUTS;
+    }
+    if (engineConfiguration->engineType == engine_type_e::HARLEY) {
+        return PROTEUS_HARLEY_OUTPUTS;
+    }
+    if (engineConfiguration->engineType == engine_type_e::GM_SBC) {
+        return PROTEUS_SBC_OUTPUTS;
+    }
+    if (engineConfiguration->engineType == engine_type_e::PROTEUS_BMW_M73) {
+        return PROTEUS_M73_OUTPUTS;
+    }
+    return PROTEUS_OUTPUTS;
+}
+#endif // HW_PROTEUS

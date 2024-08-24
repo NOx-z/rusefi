@@ -6,17 +6,22 @@
  * @author andreika <prometheus.pcb@gmail.com>
  */
 
-#include "global.h"
+#include "pch.h"
 
 #if EFI_PROD_CODE
 
 #include "mpu_util.h"
-#include "flash.h"
-#include "engine.h"
-#include "pin_repository.h"
-#include "os_util.h"
+#include "flash_int.h"
 
-EXTERN_ENGINE;
+
+void startWatchdog(int) {
+}
+
+void tryResetWatchdog() {
+}
+
+void setWatchdogResetPeriod(int) {
+}
 
 void baseMCUInit(void) {
 }
@@ -53,7 +58,8 @@ void HardFaultVector(void) {
 }
 
 #if HAL_USE_SPI || defined(__DOXYGEN__)
-bool isSpiInitialized[5] = { false, false, false, false, false };
+/* zero index is SPI_NONE */
+bool isSpiInitialized[SPI_TOTAL_COUNT + 1] = { true, false, false, false, false, false, false };
 
 static int getSpiAf(SPIDriver *driver) {
 #if STM32_SPI_USE_SPI1
@@ -72,48 +78,6 @@ static int getSpiAf(SPIDriver *driver) {
 	}
 #endif
 	return -1;
-}
-
-brain_pin_e getMisoPin(spi_device_e device) {
-	switch(device) {
-	case SPI_DEVICE_1:
-		return CONFIG(spi1misoPin);
-	case SPI_DEVICE_2:
-		return CONFIG(spi2misoPin);
-	case SPI_DEVICE_3:
-		return CONFIG(spi3misoPin);
-	default:
-		break;
-	}
-	return GPIO_UNASSIGNED;
-}
-
-brain_pin_e getMosiPin(spi_device_e device) {
-	switch(device) {
-	case SPI_DEVICE_1:
-		return CONFIG(spi1mosiPin);
-	case SPI_DEVICE_2:
-		return CONFIG(spi2mosiPin);
-	case SPI_DEVICE_3:
-		return CONFIG(spi3mosiPin);
-	default:
-		break;
-	}
-	return GPIO_UNASSIGNED;
-}
-
-brain_pin_e getSckPin(spi_device_e device) {
-	switch(device) {
-	case SPI_DEVICE_1:
-		return CONFIG(spi1sckPin);
-	case SPI_DEVICE_2:
-		return CONFIG(spi2sckPin);
-	case SPI_DEVICE_3:
-		return CONFIG(spi3sckPin);
-	default:
-		break;
-	}
-	return GPIO_UNASSIGNED;
 }
 
 void turnOnSpi(spi_device_e device) {
@@ -174,12 +138,23 @@ void initSpiModule(SPIDriver *driver, brain_pin_e sck, brain_pin_e miso,
 	efiSetPadMode("SPI master in ", miso, PAL_MODE_ALTERNATE(getSpiAf(driver)) | misoMode | PAL_STM32_OSPEED_HIGHEST);
 }
 
-void initSpiCs(SPIConfig *spiConfig, brain_pin_e csPin) {
-	spiConfig->end_cb = NULL;
+void initSpiCsNoOccupy(SPIConfig *spiConfig, brain_pin_e csPin) {
 	ioportid_t port = getHwPort("spi", csPin);
 	ioportmask_t pin = getHwPin("spi", csPin);
 	spiConfig->ssport = port;
 	spiConfig->sspad = pin;
+}
+
+void initSpiCs(SPIConfig *spiConfig, brain_pin_e csPin) {
+	/* TODO: why this is here? */
+#ifdef _CHIBIOS_RT_CONF_VER_6_1_
+	spiConfig->end_cb = nullptr;
+#else
+	spiConfig->data_cb = nullptr;
+	spiConfig->error_cb = nullptr;
+#endif
+
+	initSpiCsNoOccupy(spiConfig, csPin);
 	// CS is controlled inside 'hal_spi_lld' driver using both software and hardware methods.
 	//efiSetPadMode("chip select", csPin, PAL_MODE_OUTPUT_OPENDRAIN);
 }
@@ -197,19 +172,19 @@ BOR_Result_t BOR_Set(BOR_Level_t BORValue) {
 #if EFI_CAN_SUPPORT || defined(__DOXYGEN__)
 
 static bool isValidCan1RxPin(brain_pin_e pin) {
-	return pin == GPIOA_11 || pin == GPIOB_8 || pin == GPIOD_0;
+	return pin == Gpio::A11 || pin == Gpio::B8 || pin == Gpio::D0;
 }
 
 static bool isValidCan1TxPin(brain_pin_e pin) {
-	return pin == GPIOA_12 || pin == GPIOB_9 || pin == GPIOD_1;
+	return pin == Gpio::A12 || pin == Gpio::B9 || pin == Gpio::D1;
 }
 
 static bool isValidCan2RxPin(brain_pin_e pin) {
-	return pin == GPIOB_5 || pin == GPIOB_12;
+	return pin == Gpio::B5 || pin == Gpio::B12;
 }
 
 static bool isValidCan2TxPin(brain_pin_e pin) {
-	return pin == GPIOB_6 || pin == GPIOB_13;
+	return pin == Gpio::B6 || pin == Gpio::B13;
 }
 
 bool isValidCanTxPin(brain_pin_e pin) {
@@ -220,7 +195,7 @@ bool isValidCanRxPin(brain_pin_e pin) {
    return isValidCan1RxPin(pin) || isValidCan2RxPin(pin);
 }
 
-CANDriver * detectCanDevice(brain_pin_e pinRx, brain_pin_e pinTx) {
+CANDriver* detectCanDevice(brain_pin_e pinRx, brain_pin_e pinTx) {
    if (isValidCan1RxPin(pinRx) && isValidCan1TxPin(pinTx))
       return &CAND1;
    if (isValidCan2RxPin(pinRx) && isValidCan2TxPin(pinTx))
@@ -228,7 +203,17 @@ CANDriver * detectCanDevice(brain_pin_e pinRx, brain_pin_e pinTx) {
    return NULL;
 }
 
+void canHwInfo(CANDriver* cand)
+{
+	/* TODO: */
+	(void)cand;
+}
+
 #endif /* EFI_CAN_SUPPORT */
+
+bool mcuCanFlashWhileRunning() {
+	return false;
+}
 
 size_t flashSectorSize(flashsector_t sector) {
 	// sectors 0..11 are the 1st memory bank (1Mb), and 12..23 are the 2nd (the same structure).
@@ -257,5 +242,53 @@ uintptr_t getFlashAddrSecondCopy() {
 	return 0x10008000;
 }
 
-#endif /* EFI_PROD_CODE */
+/*static*/ hardware_pwm* hardware_pwm::tryInitPin(const char*, brain_pin_e, float, float) {
+	// TODO: implement me!
+	return nullptr;
+}
 
+void portInitAdc() {
+	// Init slow ADC
+	adcStart(&ADCD1, NULL);
+
+	// Init fast ADC (MAP sensor)
+	adcStart(&ADCD2, NULL);
+}
+
+float getMcuTemperature() {
+	// TODO: implement me!
+	return 0;
+}
+
+bool readSlowAnalogInputs(adcsample_t* convertedSamples) {
+	// TODO: implement me!
+	return true;
+}
+
+AdcToken enableFastAdcChannel(const char*, adc_channel_e channel) {
+	if (!isAdcChannelValid(channel)) {
+		return invalidAdcToken;
+	}
+
+	// TODO: implement me!
+	return invalidAdcToken;
+}
+
+adcsample_t getFastAdc(AdcToken token) {
+	if (token == invalidAdcToken) {
+		return 0;
+	}
+
+	// TODO: implement me!
+	return 0;
+}
+
+Reset_Cause_t getMCUResetCause() {
+	return Reset_Cause_Unknown;
+}
+
+const char *getMCUResetCause(Reset_Cause_t) {
+	return "Unknown";
+}
+
+#endif /* EFI_PROD_CODE */

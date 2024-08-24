@@ -31,68 +31,7 @@
 // todo: access some existing configuration field
 #define STM32_SYSCLK 168000000
 
-#define _CHIBIOS_RT_CONF_
-#define _CHIBIOS_RT_CONF_VER_5_1_
-
-/*
- * __process_stack_size__ and __process_stack_size__ defaults are each hard-coded as 0x400 in ChibiOS rules.mk files
- * rusEfi do not override these defaults.
- *
- * http://www.chibios.com/forum/viewtopic.php?t=309
- * "__main_stack_size__ is the size of INTERRUPTS stack"
- * "__process_stack_size__ is the stack of the C-runtime, in ChibiOS the "main" thread uses the C-runtime stack."
- *
- */
-
-#define PORT_IDLE_THREAD_STACK_SIZE     32
-
-// See global_shared.h notes about stack requirements
-// see also http://www.chibios.org/dokuwiki/doku.php?id=chibios:kb:stacks
-#define PORT_INT_REQUIRED_STACK 	128
-
-#define CHPRINTF_USE_FLOAT          	TRUE
-
-#if !defined(EFI_CLOCK_LOCKS) || defined(__DOXYGEN__)
-// looks like this value could not be defined in efifeatures.h - please define either externally or just change the value here
- #define EFI_CLOCK_LOCKS FALSE
-#endif /* EFI_CLOCK_LOCKS */
-
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif /* __cplusplus */
- #ifndef __ASSEMBLER__
-  #if EFI_CLOCK_LOCKS
-    void irqEnterHook(void);
-    void irqExitHook(void);
-  #else /* EFI_CLOCK_LOCKS */
-    #define irqEnterHook() {}
-    #define irqExitHook() {}
-  #endif /*EFI_CLOCK_LOCKS */
- #endif /* __ASSEMBLER__ */
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
-#if EFI_CLOCK_LOCKS
-#ifdef __cplusplus
-extern "C"
-{
-#endif /* __cplusplus */
-#ifndef __ASSEMBLER__
-  void onLockHook(void);
-  void onUnlockHook(void);
-#endif /* __ASSEMBLER__ */
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-  #define ON_LOCK_HOOK onLockHook()
-  #define ON_UNLOCK_HOOK onUnlockHook()
-#else /* EFI_CLOCK_LOCKS */
-  #define ON_LOCK_HOOK
-  #define ON_UNLOCK_HOOK
-#endif /* EFI_CLOCK_LOCKS */
+#include "chconf_common.h"
 
 /*===========================================================================*/
 /**
@@ -174,21 +113,6 @@ extern "C"
  */
 #if !defined(CH_CFG_TIME_QUANTUM)
 #define CH_CFG_TIME_QUANTUM                 20
-#endif
-
-/**
- * @brief   Managed RAM size.
- * @details Size of the RAM area to be managed by the OS. If set to zero
- *          then the whole available RAM is used. The core memory is made
- *          available to the heap allocator and/or can be used directly through
- *          the simplified core memory allocator.
- *
- * @note    In order to let the OS manage the whole RAM the linker script must
- *          provide the @p __heap_base__ and @p __heap_end__ symbols.
- * @note    Requires @p CH_CFG_USE_MEMCORE.
- */
-#if !defined(CH_CFG_MEMCORE_SIZE)
-#define CH_CFG_MEMCORE_SIZE                 1024/*2048*/
 #endif
 
 /**
@@ -380,6 +304,19 @@ extern "C"
 #endif
 
 /**
+ * @brief   Dynamic Threads APIs.
+ * @details If enabled then the dynamic threads creation APIs are included
+ *          in the kernel.
+ *
+ * @note    The default is @p TRUE.
+ * @note    Requires @p CH_CFG_USE_WAITEXIT.
+ * @note    Requires @p CH_CFG_USE_HEAP and/or @p CH_CFG_USE_MEMPOOLS.
+ */
+#if !defined(CH_CFG_USE_DYNAMIC)
+#define CH_CFG_USE_DYNAMIC                  FALSE
+#endif
+
+/**
  * @brief   Mailboxes APIs.
  * @details If enabled then the asynchronous messages (mailboxes) APIs are
  *          included in the kernel.
@@ -397,7 +334,7 @@ extern "C"
  *
  * @note    The default is @p TRUE.
  */
-#define CH_CFG_USE_QUEUES                   TRUE
+#define CH_CFG_USE_QUEUES                   FALSE
 
 /**
  * @brief   Core Memory Manager APIs.
@@ -408,6 +345,21 @@ extern "C"
  */
 #if !defined(CH_CFG_USE_MEMCORE)
 #define CH_CFG_USE_MEMCORE                  TRUE
+#endif
+
+/**
+ * @brief   Managed RAM size.
+ * @details Size of the RAM area to be managed by the OS. If set to zero
+ *          then the whole available RAM is used. The core memory is made
+ *          available to the heap allocator and/or can be used directly through
+ *          the simplified core memory allocator.
+ *
+ * @note    In order to let the OS manage the whole RAM the linker script must
+ *          provide the @p __heap_base__ and @p __heap_end__ symbols.
+ * @note    Requires @p CH_CFG_USE_MEMCORE.
+ */
+#if !defined(CH_CFG_MEMCORE_SIZE)
+#define CH_CFG_MEMCORE_SIZE                 0
 #endif
 
 /**
@@ -432,20 +384,7 @@ extern "C"
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_MEMPOOLS)
-#define CH_CFG_USE_MEMPOOLS                 TRUE
-#endif
-
-/**
- * @brief   Dynamic Threads APIs.
- * @details If enabled then the dynamic threads creation APIs are included
- *          in the kernel.
- *
- * @note    The default is @p TRUE.
- * @note    Requires @p CH_CFG_USE_WAITEXIT.
- * @note    Requires @p CH_CFG_USE_HEAP and/or @p CH_CFG_USE_MEMPOOLS.
- */
-#if !defined(CH_CFG_USE_DYNAMIC)
-#define CH_CFG_USE_DYNAMIC                  FALSE
+#define CH_CFG_USE_MEMPOOLS                 FALSE
 #endif
 
 /**
@@ -457,6 +396,50 @@ extern "C"
  */
 #if !defined(CH_CFG_USE_OBJ_FIFOS)
 #define CH_CFG_USE_OBJ_FIFOS                FALSE
+#endif
+
+/**
+ * @brief   Pipes APIs.
+ * @details If enabled then the pipes APIs are included
+ *          in the kernel.
+ *
+ * @note    The default is @p TRUE.
+ */
+#if !defined(CH_CFG_USE_PIPES)
+#define CH_CFG_USE_PIPES                    FALSE
+#endif
+
+/**
+ * @brief   Objects Caches APIs.
+ * @details If enabled then the objects caches APIs are included
+ *          in the kernel.
+ *
+ * @note    The default is @p TRUE.
+ */
+#if !defined(CH_CFG_USE_OBJ_CACHES)
+#define CH_CFG_USE_OBJ_CACHES               FALSE
+#endif
+
+/**
+ * @brief   Delegate threads APIs.
+ * @details If enabled then the delegate threads APIs are included
+ *          in the kernel.
+ *
+ * @note    The default is @p TRUE.
+ */
+#if !defined(CH_CFG_USE_DELEGATES)
+#define CH_CFG_USE_DELEGATES                FALSE
+#endif
+
+/**
+ * @brief   Jobs Queues APIs.
+ * @details If enabled then the jobs queues APIs are included
+ *          in the kernel.
+ *
+ * @note    The default is @p TRUE.
+ */
+#if !defined(CH_CFG_USE_JOBS)
+#define CH_CFG_USE_JOBS                     FALSE
 #endif
 
 /** @} */
@@ -553,12 +536,6 @@ extern "C"
 #endif
 
 /**
- * micro-optimization: use same (lower-level) api for lock/unlock regardless on context
- * this saves us one branching
- */
-#define USE_PORT_LOCK FALSE
-
-/**
  * @brief   Debug option, parameters checks.
  * @details If enabled then the checks on the API functions input
  *          parameters are activated.
@@ -598,17 +575,6 @@ extern "C"
  */
 #if !defined(CH_DBG_TRACE_BUFFER_SIZE)
 #define CH_DBG_TRACE_BUFFER_SIZE            128
-#endif
-
-/**
- * @brief   Debug option, trace buffer.
- * @details If enabled then the context switch circular trace buffer is
- *          activated.
- *
- * @note    The default is @p FALSE.
- */
-#ifndef CH_DBG_ENABLE_TRACE
-#define CH_DBG_ENABLE_TRACE                 FALSE
 #endif
 
 /**
@@ -677,26 +643,6 @@ extern "C"
 }
 
 /**
- * @brief   Threads descriptor structure extension.
- * @details User fields added to the end of the @p thread_t structure.
- */
-#define CH_CFG_THREAD_EXTRA_FIELDS                                          \
-  void *activeStack; \
-  int remainingStack; \
-  /* Add threads custom fields here.*/
-
-/**
- * @brief   Threads initialization hook.
- * @details User initialization code added to the @p chThdInit() API.
- *
- * @note    It is invoked from within @p chThdInit() and implicitly from all
- *          the threads creation APIs.
- */
-#define CH_CFG_THREAD_INIT_HOOK(tp) {                                       \
-  /* Add threads initialization code here.*/                                \
-}
-
-/**
  * @brief   Threads finalization hook.
  * @details User finalization code added to the @p chThdExit() API.
  *
@@ -706,30 +652,6 @@ extern "C"
  */
 #define CH_CFG_THREAD_EXIT_HOOK(tp) {                                       \
   /* Add threads finalization code here.*/                                  \
-}
-
-/**
- * @brief   Context switch hook.
- * @details This hook is invoked just before switching between threads.
- */
-#define CH_CFG_CONTEXT_SWITCH_HOOK(ntp, otp) {                              \
-  /* Context switch code here.*/                                            \
-}
-
-/**
- * @brief   ISR enter hook.
- */
-#define CH_CFG_IRQ_PROLOGUE_HOOK() {                                        \
-  /* IRQ prologue code here.*/                                              \
-  irqEnterHook();                                                           \
-}
-
-/**
- * @brief   ISR exit hook.
- */
-#define CH_CFG_IRQ_EPILOGUE_HOOK() {                                        \
-  /* IRQ epilogue code here.*/                                              \
-  irqExitHook();                                                            \
 }
 
 /**
@@ -793,37 +715,6 @@ extern "C"
 /*===========================================================================*/
 /* Port-specific settings (override port settings defaulted in chcore.h).    */
 /*===========================================================================*/
-
-#ifndef __ASSEMBLER__
-
-#ifdef __cplusplus
-extern "C"
-#endif
-void chDbgPanic3(const char *msg, const char * file, int line);
-#endif
-
-/**
- * declared as a macro so that this code does not use stack
- * so that it would not crash the error handler in case of stack issues
- */
-#if CH_DBG_SYSTEM_STATE_CHECK
-#define hasOsPanicError() (ch.dbg.panic_msg != NULL)
-#else
-#define hasOsPanicError() (FALSE)
-#endif
-
-
-#define chDbgAssert(c, remark) do {                                              \
-  if (CH_DBG_ENABLE_ASSERTS != FALSE) {                                     \
-    if (!(c)) {                                                             \
-  /*lint -restore*/                                                         \
-      chSysHalt(remark);                                                    \
-    }                                                                       \
-  }                                                                         \
-} while (false)
-
-#define ENABLE_PERF_TRACE FALSE
-#define TRACE_BUFFER_LENGTH 1
 
 #endif  /* CHCONF_H */
 

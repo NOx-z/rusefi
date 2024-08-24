@@ -5,52 +5,49 @@
  * @author Andrey Belomutskiy, (c) 2012-2020
  */
 
-#include "global.h"
+#include "pch.h"
+
 #include "boards.h"
 #include "rusEfiFunctionalTest.h"
 #include "console_io.h"
 #include "eficonsole.h"
-#include "engine_configuration.h"
-#include "rusefi_enums.h"
-#include "pwm_generator_logic.h"
 #include "trigger_central.h"
 #include "datalogging.h"
-#include "rpm_calculator.h"
 #include "engine_sniffer.h"
 #include "status_loop.h"
 #include "trigger_emulator_algo.h"
 #include "main_trigger_callback.h"
-#include "allsensors.h"
 #include "sensor_chart.h"
 #include "bench_test.h"
-#include "engine.h"
 #include "tunerstudio.h"
-#include "trigger_emulator.h"
-#include "engine_controller.h"
 #include "map_averaging.h"
 #include "memstreams.h"
 #include <chprintf.h>
+#include "rusefi_lua.h"
+#include "can_hw.h"
+#include "flash_main.h"
+#include "can_msg_tx.h"
+#include "fifo_buffer.h"
+#include "script_impl.h"
+#include <vector>
+
+extern fifo_buffer<CANTxFrame, 1024> txCanBuffer;
 
 #define DEFAULT_SIM_RPM 1200
 #define DEFAULT_SNIFFER_THR 2500
 
-EXTERN_ENGINE;
-
+#if EFI_ENGINE_SNIFFER
 extern WaveChart waveChart;
+#endif
 
-static LoggingWithStorage sharedLogger("simulator");
-
-int getRemainingStack(thread_t *otp) {
+int getRemainingStack(thread_t*) {
 	return 99999;
-}
-
-float getMap(void) {
-	return getRawMap();
 }
 
 static void assertString(const char*actual, const char *expected) {
 	if (strcmp(actual, expected) != 0) {
-		firmwareError(OBD_PCM_Processor_Fault, "chprintf test: got %s while %s", actual, expected);
+		printf("assertString FAILED\n");
+		criticalError("chprintf test: got %s while %s", actual, expected);
 	}
 }
 
@@ -59,6 +56,11 @@ static void runChprintfTest() {
 	static char testBuffer[200];
 	msObjectInit(&ts, (uint8_t *) testBuffer, sizeof(testBuffer), 0);
 
+
+	ts.eos = 0; // reset
+	chprintf((BaseSequentialStream*)&ts, "%.2f - %.2f", NAN, NAN);
+	ts.buffer[ts.eos] = 0;
+	assertString(testBuffer, "NaN - NaN");
 
 // it's a very, very long and mostly forgotten story how this became our %.2f precision format
 	ts.eos = 0; // reset
@@ -70,82 +72,191 @@ static void runChprintfTest() {
 
 	{
 		LoggingWithStorage testLogging("test");
-		appendFloat(&testLogging, 1.23, 5);
-		appendFloat(&testLogging, 1.234, 2);
+		testLogging.appendFloat(1.23, 5);
+		testLogging.appendFloat(1.234, 2);
 		assertString(testLogging.buffer, "1.230001.23");
 
 	}
 
 	{
 		LoggingWithStorage testLogging("test");
-		appendFloat(&testLogging, -1.23, 5);
+		testLogging.appendFloat(-1.23, 5);
 		assertString(testLogging.buffer, "-1.23000");
 	}
 	{
 		LoggingWithStorage testLogging("test");
-		appendPrintf(&testLogging, "a%.2fb%fc", -1.2, -3.4);
-		assertString(testLogging.buffer, "a-1.20b-3.400000095c");
+		testLogging.appendPrintf( "a%.2fb%fc", -1.2, -3.4);
+		// different compilers produce different 8th digit
+		testLogging.buffer[strlen(testLogging.buffer) - 2] = 'X';
+		assertString(testLogging.buffer, "a-1.20b-3.40000009Xc");
 	}
 
 }
 
-void rusEfiFunctionalTest(void) {
-	printToConsole("Running rusEfi simulator version:");
-	initErrorHandlingDataStructures();
+static void runCanGpioTest() {
+}
+
+// todo: reuse intFlashWrite method?
+static void writeSimulatorTune(const char *fileName) {
+	FILE *ptr = fopen(fileName, "wb");
+	if (ptr == nullptr) {
+		printf("ERROR creating file: [%s]\n", SIMULATOR_TUNE_BIN_FILE_NAME);
+		printf("Please check folder exists and is writeable.");
+		return;
+	}
+	fwrite(&persistentState.persistentConfiguration, 1, sizeof(persistentState.persistentConfiguration), ptr);
+	fclose(ptr);
+}
+
+static void runToothLoggerTest() {
+#if EFI_TOOTH_LOGGER
+	EnableToothLoggerIfNotEnabled();
+
+	{
+		// no data yet
+		CompositeBuffer * toothBuffer = GetToothLoggerBufferNonblocking();
+		if (toothBuffer != nullptr) {
+			criticalError("nullptr buffer expected");
+		}
+	}
+
+	getTriggerCentral()->isEngineSnifferEnabled = true;
+
+	for (int i = 0;i < 400;i++) {
+		efitick_t nowNt = getTimeNowNt();
+		LogTriggerTooth(SHAFT_SECONDARY_RISING, nowNt);
+	}
+
+	{
+		CompositeBuffer * toothBuffer = GetToothLoggerBufferNonblocking();
+		criticalAssertVoid(toothBuffer != nullptr, "filled buffer expected");
+
+		size_t size = toothBuffer->nextIdx * sizeof(composite_logger_s);
+		criticalAssertVoid(size != 0, "Positive payload size expected");
+
+		const uint8_t* ptr = reinterpret_cast<const uint8_t*>(toothBuffer->buffer);
+		criticalAssertVoid(ptr != nullptr, "Payload reference expected");
+	}
+#endif // EFI_TOOTH_LOGGER
+}
+
+static void assertNear(float actual, float expected) {
+    float delta = absF(actual - expected);
+    if (delta > 0.01)
+        throw std::runtime_error("assertNear actual=" + std::to_string(actual) + " expected=" + std::to_string(expected));
+}
+
+static void	runNotSquareTest() {
+    assertNear(getscriptTable(3)->getValue(0, 20), 140);
+    assertNear(getscriptTable(3)->getValue(0, 30), 240);
+
+    assertNear(getscriptTable(3)->getValue(3000, 20), 144.384);
+}
+
+static void writeEngineTypeDefaultConfig(engine_type_e type) {
+	engineConfiguration->engineType = type;
+	resetConfigurationExt(engineConfiguration->engineType);
+	char fileName[3000];
+	sprintf(fileName, "%s_%d%s",
+	    SIMULATOR_TUNE_BIN_FILE_NAME_PREFIX,
+	    (int)engineConfiguration->engineType,
+	    SIMULATOR_TUNE_BIN_FILE_NAME_SUFFIX
+	);
+	writeSimulatorTune(fileName);
+}
+
+void rusEfiFunctionalTest() {
+	printToConsole("Running rusEFI simulator version:");
 	static char versionBuffer[20];
 	itoa10(versionBuffer, (int)getRusEfiVersion());
 	printToConsole(versionBuffer);
 
-#if EFI_SHAFT_POSITION_INPUT
-	/**
-	 * This is so early because we want to init logger
-	 * which would be used while finding trigger sync index
-	 * while reading configuration
-	 */
-	initTriggerDecoderLogger(&sharedLogger);
-#endif /* EFI_SHAFT_POSITION_INPUT */
+	engine->setConfig();
 
-	initIntermediateLoggingBuffer();
+	startLoggingProcessor();
 
-	engine->setConfig(config);
+	initDataStructures();
+	initializeConsole();
 
-	initializeConsole(&sharedLogger);
+	// todo: reduce code duplication with initRealHardwareEngineController
 
-	initStatusLoop();
-	initDataStructures(PASS_ENGINE_PARAMETER_SIGNATURE);
+	initFlash();
 
+  // [CannedTunes] at the moment we manually sync this list with WriteSimulatorConfiguration.java
+	for (auto const type : {
+			engine_type_e::MERCEDES_M111,
+			engine_type_e::BMW_M52,
+			engine_type_e::MAZDA_MIATA_NA6,
+			engine_type_e::MAZDA_MIATA_NA94,
+			engine_type_e::MAZDA_MIATA_NA96,
+			engine_type_e::MAZDA_MIATA_NB1,
+			engine_type_e::MAZDA_MIATA_NB2,
+			engine_type_e::HONDA_OBD1,
+			engine_type_e::HONDA_K,
+			engine_type_e::HELLEN_121_NISSAN_6_CYL,
+			engine_type_e::HELLEN_154_HYUNDAI_COUPE_BK1,
+			engine_type_e::HELLEN_154_HYUNDAI_COUPE_BK2,
+			engine_type_e::POLARIS_RZR,
+			engine_type_e::HYUNDAI_PB,
+			engine_type_e::MAVERICK_X3,
+			engine_type_e::HARLEY,
+	} ) {
+		writeEngineTypeDefaultConfig(type);
+	}
 
-	// todo: reduce code duplication with initEngineContoller
+	// this here is really 'reset to default configuration'
+	loadConfiguration();
 
-	resetConfigurationExt(NULL, FORD_ESCORT_GT PASS_ENGINE_PARAMETER_SUFFIX);
+	commonInitEngineController();
 
-	commonInitEngineController(&sharedLogger);
+    commonEarlyInit();
 
-	initTriggerCentral(&sharedLogger);
-	initTriggerEmulator(&sharedLogger PASS_ENGINE_PARAMETER_SUFFIX);
+#if EFI_EMULATE_POSITION_SENSORS
+	enableTriggerStimulator(false);
+#endif
 
-	startStatusThreads();
+	writeSimulatorTune(SIMULATOR_TUNE_BIN_FILE_NAME);
 
+    /**
+     * !!!! TESTS !
+     */
 	runChprintfTest();
-
-	initPeriodicEvents(PASS_ENGINE_PARAMETER_SIGNATURE);
-
-	setTriggerEmulatorRPM(DEFAULT_SIM_RPM PASS_ENGINE_PARAMETER_SUFFIX);
+	runToothLoggerTest();
+	runCanGpioTest();
+	runNotSquareTest();
+    /**
+     * end of TESTS !
+     */
+#if EFI_EMULATE_POSITION_SENSORS
+	setTriggerEmulatorRPM(DEFAULT_SIM_RPM);
+#endif
 	engineConfiguration->engineSnifferRpmThreshold = DEFAULT_SNIFFER_THR;
+
+	startSerialChannels();
+
+	engineConfiguration->enableVerboseCanTx = true;
+
+	initPeriodicEvents();
+	rememberCurrentConfiguration();
+
+	extern bool main_loop_started;
+	main_loop_started = true;
 }
 
-void printPendingMessages(void) {
+void printPendingMessages() {
 	updateDevConsoleState();
+#if EFI_ENGINE_SNIFFER
 	waveChart.publishIfFull();
+#endif
 }
 
 int isSerialOverTcpReady;
 
-bool isCommandLineConsoleReady(void) {
+bool isCommandLineConsoleReady() {
 	return isSerialOverTcpReady;
 }
 
-void applyNewConfiguration(void) {
+void applyNewConfiguration() {
 }
 
 void onFatalError(const char *msg, const char * file, int line) {
@@ -164,6 +275,87 @@ void logMsg(const char *format, ...) {
 //	fclose(fp);
 }
 
-BaseChannel * getConsoleChannel(void) {
-	return (BaseChannel *)EFI_CONSOLE_SERIAL_DEVICE;
+#if HAL_USE_CAN
+static bool didInitCan = false;
+CANDriver* detectCanDevice(brain_pin_e pinRx, brain_pin_e pinTx) {
+	if (didInitCan) {
+		return nullptr;
+	}
+
+	didInitCan = true;
+	return &CAND1;
+}
+#endif // HAL_USE_CAN
+
+static uint8_t wrapOutBuffer[BLOCKING_FACTOR + 2];
+
+static uint8_t readInt8FromCan(char * & data, int & incomingPacketSize) {
+	incomingPacketSize--;
+	return (uint8_t)(*data++);
+}
+
+static int32_t readInt32FromCan(char * & data, int & incomingPacketSize) {
+	int32_t value = 0;
+	value |= ((*data++) & 0xff) << 24;
+	value |= ((*data++) & 0xff) << 16;
+	value |= ((*data++) & 0xff) << 8;
+	value |= (*data++) & 0xff;
+
+	incomingPacketSize -= 4;
+	return value;
+}
+
+void handleWrapCan(TsChannelBase* tsChannel, char *data, int incomingPacketSize) {
+	std::vector<int> responseEids;
+	// process incoming CAN packets (at least 2 bytes are expected to store the number of EIDs and packets)
+	if (incomingPacketSize >= 2) {
+		responseEids.resize(readInt8FromCan(data, incomingPacketSize));
+		for (int& eid : responseEids) {
+			eid = readInt32FromCan(data, incomingPacketSize);
+		}
+		int numPackets = readInt8FromCan(data, incomingPacketSize);
+
+		// if we received a packet, we treat it as a query, and then
+		// we want to see some packets as response to the query,
+		// so we need to clear the CAN buffer because it may be full already
+		if (numPackets > 0) {
+			txCanBuffer.clear();
+		}
+
+		for (int i = 0; i < numPackets && incomingPacketSize >= 16; i++) {
+			CANRxFrame rxFrame;
+			rxFrame.FMI = data[0];
+			rxFrame.TIME = (data[1] << 8) | data[2];
+			rxFrame.DLC = data[3] & 0xf;
+			rxFrame.RTR = (data[3] >> 4) & 1;
+			rxFrame.IDE = (data[3] >> 5) & 1;
+			rxFrame.EID = (data[7] << 24) | (data[6] << 16) | (data[5] << 8) | (data[4]);
+			memcpy(rxFrame.data8, data + 8, sizeof(rxFrame.data8));
+
+			processCanRxMessage(0, rxFrame, getTimeNowNt());
+
+			data += sizeof(rxFrame);
+			incomingPacketSize -= sizeof(rxFrame);
+		}
+	}
+
+    uint16_t numPackets = 0;
+    int outputSize = 2;
+
+    while (txCanBuffer.getCount() > 0 && (outputSize + sizeof(CANTxFrame)) <= BLOCKING_FACTOR) {
+    	CANTxFrame f = txCanBuffer.get();
+    	// filter out CAN packets
+		for (int eid : responseEids) {
+    		if (f.EID == eid) {
+		        void *frame = (void *)&f;
+		        memcpy((void*)(wrapOutBuffer + outputSize), frame, sizeof(CANTxFrame));
+		        outputSize += sizeof(CANTxFrame);
+		        numPackets++;
+		        break;
+		    }
+	    }
+	}
+
+    memcpy(wrapOutBuffer, &numPackets, 2);
+    tsChannel->sendResponse(TS_CRC, wrapOutBuffer, outputSize, true);
 }

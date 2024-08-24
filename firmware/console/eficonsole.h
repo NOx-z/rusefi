@@ -7,8 +7,11 @@
  */
 
 #pragma once
-#include "datalogging.h"
 
-void initializeConsole(Logging *sharedLogger);
-void print(const char *fmt, ...);
+void initializeConsole();
 
+void startUsbConsole();
+void printUsbConnectorStats();
+
+void startEthernetConsole();
+void startWifiConsole();
